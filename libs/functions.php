@@ -104,29 +104,36 @@ function makeDir($dir){
     }
 }
 
+//缩略图文件名：统一用 jpg 后缀，保证浏览器能直接显示（TIFF/HEIC 等源格式也能用）
+function thumb_name($filename){
+    $base = pathinfo(basename($filename), PATHINFO_FILENAME);
+    $base = preg_replace('/[\\\\\/:*?"<>|\x00-\x1F]+/u', '_', $base);
+    return 'SL_'.$base.'_'.substr(md5($filename), 0, 8).'.jpg';
+}
+
 //图片缩略函数
 // 固定最大边缩放：长边不超过 $maxSize，短边按比例，绝不放大
 // 之前用 0.4 比例缩放的问题：大图缩完仍然很大（4000x3000 -> 1600x1200），
 // 小图缩完可能变成 0px（1x1 -> 0），既起不到缩略图作用，也会让 GD 报错。
 function suolue($filename,$savePath,$maxSize=320){
     $info = @getimagesize($filename);
-    if(!$info) return false;
+    if(!$info) return suolue_fallback($filename,$savePath,$maxSize);
     $width = (int)$info[0];
     $height = (int)$info[1];
-    if($width < 1 || $height < 1) return false;
+    if($width < 1 || $height < 1) return suolue_fallback($filename,$savePath,$maxSize);
 
     $scale = min(1, $maxSize / max($width, $height));
     $n_w = max(1, (int)round($width * $scale));
     $n_h = max(1, (int)round($height * $scale));
 
-    // 上传支持 jpg/png/gif/webp，不能固定用 imagecreatefromjpeg
+    // GD 的 imagecreatefromstring 支持 jpg/png/gif/webp/bmp/wbmp 等常见格式
     $img = @imagecreatefromstring(file_get_contents($filename));
-    if(!$img) return false;
+    if(!$img) return suolue_fallback($filename,$savePath,$maxSize);
 
     $new = imagecreatetruecolor($n_w, $n_h);
     if(!$new){
         imagedestroy($img);
-        return false;
+        return suolue_fallback($filename,$savePath,$maxSize);
     }
     // PNG/GIF 可能有透明通道，缩略图先铺白底，避免变黑
     imagefill($new, 0, 0, imagecolorallocate($new, 255, 255, 255));
@@ -134,5 +141,62 @@ function suolue($filename,$savePath,$maxSize=320){
     $ok = imagejpeg($new, $savePath, 85);
     imagedestroy($new);
     imagedestroy($img);
-    return $ok;
+    if($ok && is_file($savePath) && filesize($savePath) > 0) return true;
+    return suolue_fallback($filename,$savePath,$maxSize);
+}
+
+// 缩略图后备方案：GD 解不了的格式（如 HEIC/TIFF）尝试 Imagick 或系统命令
+function suolue_fallback($filename,$savePath,$maxSize=320){
+    $maxSize = (int)$maxSize;
+    if($maxSize < 1) $maxSize = 320;
+
+    // 1) Imagick 扩展（用 extension_loaded 判断，避免触发项目自动加载器）
+    if(extension_loaded('imagick') && class_exists('Imagick', false)){
+        try{
+            $im = new \Imagick($filename);
+            try{ $im->setImageBackgroundColor('white'); }catch(\Throwable $e){}
+            try{ $im->setImageAlphaChannel(\Imagick::ALPHACHANNEL_REMOVE); }catch(\Throwable $e){}
+            $im->thumbnailImage($maxSize, $maxSize, true);
+            $im->setImageFormat('jpeg');
+            $im->setImageCompressionQuality(85);
+            $ok = $im->writeImage($savePath);
+            $im->clear();
+            $im->destroy();
+            if($ok && is_file($savePath) && filesize($savePath) > 0) return true;
+        }catch(\Throwable $e){
+            // 继续尝试系统命令
+        }
+    }
+
+    // 2) 系统命令：macOS 自带 sips 可处理 HEIC；Linux 常见 ImageMagick / vips
+    if(!function_exists('exec')) return false;
+    $cmds = [];
+    if(PHP_OS_FAMILY === 'Darwin' && is_executable('/usr/bin/sips')){
+        $cmds[] = '/usr/bin/sips -s format jpeg --resampleHeightWidthMax ' . $maxSize
+            . ' ' . escapeshellarg($filename) . ' --out ' . escapeshellarg($savePath);
+    }
+    if(is_executable('/usr/bin/convert')){
+        $cmds[] = '/usr/bin/convert ' . escapeshellarg($filename)
+            . ' -thumbnail ' . $maxSize . 'x' . $maxSize
+            . ' -background white -alpha remove -alpha off -quality 85 '
+            . escapeshellarg($savePath);
+    }
+    if(is_executable('/usr/bin/magick')){
+        $cmds[] = '/usr/bin/magick ' . escapeshellarg($filename)
+            . ' -thumbnail ' . $maxSize . 'x' . $maxSize
+            . ' -background white -alpha remove -alpha off -quality 85 '
+            . escapeshellarg($savePath);
+    }
+    if(is_executable('/usr/bin/vips')){
+        $cmds[] = '/usr/bin/vips thumbnail ' . escapeshellarg($filename) . ' ' . escapeshellarg($savePath) . ' ' . $maxSize;
+    }
+
+    foreach($cmds as $cmd){
+        $out = [];
+        $rc = 1;
+        @exec($cmd . ' 2>/dev/null', $out, $rc);
+        if($rc === 0 && is_file($savePath) && filesize($savePath) > 0) return true;
+        if(is_file($savePath)) @unlink($savePath);
+    }
+    return false;
 }

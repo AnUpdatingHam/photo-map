@@ -144,7 +144,7 @@ class UploadController extends Controller
                         $dir = "photos/$uqq/{$towncode}";
                         makeDir(UPURL.$dir);
                         $url = $dir."/".$file['name'];
-                        $slurl = $dir.'/SL'.$file['name'];
+                        $slurl = $dir.'/'.thumb_name($file['name']);
                         $wsysurl = UPURL.$dir.'/WEBP'.$file['name'].".webp";
                         $dbwsysurl = $dir.'/WEBP'.$file['name'].".webp";
                         // 图片压缩/缩略失败不应阻断上传，失败则回退用原图
@@ -230,7 +230,7 @@ class UploadController extends Controller
                        imagejpeg($image, $absRotated);
                        imagedestroy($image);
                        $url = $dir."/".$file['name'];
-                       $slurl = $dir.'/SL_'.$file['name'];
+                       $slurl = $dir.'/'.thumb_name($file['name']);
                        $wsysurl =  UPURL.$dir.'/WEBP'.$file['name'].".webp";//保存图片的文件名
                        $dbwsysurl = $dir.'/WEBP'.$file['name'].".webp";
                        //缩略图/压缩失败不阻断上传，回退用原图

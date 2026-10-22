@@ -176,8 +176,8 @@ function addPhoto() {
             content: '<div style="padding:16px;">' +
                 '<div style="margin-bottom:12px;color:#333;"><b>' + (loc.name || '所选位置') + '</b>' +
                 '<div style="color:#888;font-size:12px;margin-top:2px;">' + (loc.address || '') + '</div></div>' +
-                '<div id="dropZone" style="border:2px dashed #ccd6e0;border-radius:8px;padding:36px;text-align:center;color:#999;cursor:pointer;background:#fafafa;">点击选择图片，或把图片拖到这里<br><span style="font-size:12px">支持 jpg/png/gif，可多选</span></div>' +
-                '<input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/gif" style="display:none;">' +
+                '<div id="dropZone" style="border:2px dashed #ccd6e0;border-radius:8px;padding:36px;text-align:center;color:#999;cursor:pointer;background:#fafafa;">点击选择图片，或把图片拖到这里<br><span style="font-size:12px">支持 jpg/png/gif/webp/bmp 等常见格式，可多选</span></div>' +
+                '<input type="file" id="fileInput" multiple accept="image/*" style="display:none;">' +
                 '<div id="previewList" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;"></div>' +
                 '<textarea id="caption" class="layui-textarea" placeholder="写点什么…（可选）" style="margin-top:12px;height:70px;"></textarea>' +
                 '<div style="margin-top:12px;text-align:right;"><button class="layui-btn" id="uploadBtn">开始上传</button></div>' +
