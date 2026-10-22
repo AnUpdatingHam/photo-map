@@ -9,7 +9,7 @@ class IndexController extends Controller
 {
     public function index()
     {
-        $info = $_COOKIE["map-info"];
+        $info = $_COOKIE["map-info"] ?? '';
         if ($info) {
             $info = explode('-', $info);
             $qq = encryption($info[0], 1);

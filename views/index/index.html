@@ -5,23 +5,24 @@
 	<title><?php  echo $_SESSION['name']?> | 与足迹与生活定格</title>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<!-- <meta property="og:image" content="route.png" /> -->
 	<link rel="icon" href="/images/favicon.ico" type="image/x-icon" />
 	<link rel="shortcut icon" href="/images/favicon.ico" type="image/x-icon" />
-	<link rel="stylesheet" href="/js/leaflet/leaflet.css" />
-	<link rel="stylesheet" href="/js/cluster/MarkerCluster.css" />
-	<link rel="stylesheet" href="/css/Leaflet.Photo.css" />
 	<link rel="stylesheet" href="/css/map.css" />
 	<link rel="stylesheet" href="/layui/css/layui.css">
 	<link rel="stylesheet" href="/js/viewer/viewer.min.css">
 	<link rel="stylesheet" href="/css/index.css" />
+	<style>
+		/* 上传弹窗里的选点地图 */
+		#pickmap { width: 100%; height: 260px; margin: 8px 0; }
+		.pick-search { width: 100%; padding: 6px 8px; box-sizing: border-box; margin-bottom: 4px; }
+		.pick-result { color: #666; font-size: 12px; min-height: 18px; }
+	</style>
 </head>
 
 <body>
 	<ul class="layui-nav">
 		<img src="" alt="" style="border-radius: 50%;">
 		<div style="padding:10px">
-
 		</div>
 		<li class="layui-nav-item">
 			<a href="javascript:;"><img src="<?php  echo $_SESSION['avatar']?>" class="layui-nav-img">
@@ -35,12 +36,6 @@
 						&nbsp;添加图片
 					</a>
 				</dd>
-				<!-- <dd>
-					<a href="javascript:;" onclick="addVideo()">
-						<i class="layui-icon layui-icon-video" style="font-size:20px;"> </i>
-						&nbsp;添加视频
-					</a>
-				</dd> -->
 				<dd><a href="/user💕out">退了(•̀⌓•́)</a></dd>
 			</dl>
 		</li>
@@ -48,29 +43,27 @@
 
 	<div id="map"></div>
 	<div>
-		  <!-- <div class="icon" title="我亦飘零久，寻此同归人。偕度烂漫日,执手抚生尘。"> -->
-			<div class="icon">
-				<svg onclick="friend()" version="1.1" id="heart-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
-				  width="100%" height="100%" viewBox="0 0 116 117" preserveAspectRatio="xMinYMin meet" class="svg-content">
-				  <path id="heart" d="M70.711,36.677c-5.989,0-11.239,2.086-13.919,6.997c-2.68-4.911-7.85-6.997-13.837-6.997
-				  c-8.727,0-15.799,7.074-15.799,15.799c0,15.788,29.866,30.062,29.866,30.062S86.51,68.264,86.51,52.476
-				  C86.51,43.751,79.436,36.677,70.711,36.677z" />
-				</svg>
-			  </div>
+		<div class="icon">
+			<svg onclick="friend()" version="1.1" id="heart-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+			  width="100%" height="100%" viewBox="0 0 116 117" preserveAspectRatio="xMinYMin meet" class="svg-content">
+			  <path id="heart" d="M70.711,36.677c-5.989,0-11.239,2.086-13.919,6.997c-2.68-4.911-7.85-6.997-13.837-6.997
+			  c-8.727,0-15.799,7.074-15.799,15.799c0,15.788,29.866,30.062,29.866,30.062S86.51,68.264,86.51,52.476
+			  C86.51,43.751,79.436,36.677,70.711,36.677z" />
+			</svg>
+		  </div>
 	</div>
-	<script src="/js/reqwest.min.js"></script>
-	<script src="/js/leaflet/leaflet.js"></script>
-	<script src="/js/chinesetmsproviders.js"></script>
-	<script src="/js/cluster/leaflet.markercluster.js"></script>
-	<script src="/js/Leaflet.Photo.js"></script>
+
 	<script src="/layui/layui.js"></script>
 	<script src="/js/axios.min.js"></script>
-	<!-- <script src="/js/wangEditor.js"></script> -->
 	<script src="/js/viewer/viewer.min.js"></script>
+	<!-- 高德 JS API：2.0 key 必须在加载前配置成对的安全密钥(securityJsCode)，否则服务调用报 10008 -->
+	<?php if (config('map-js-code')): ?>
+	<script>window._AMapSecurityConfig = { securityJsCode: '<?php echo config('map-js-code');?>' };</script>
+	<?php endif; ?>
+	<script src="https://webapi.amap.com/maps?v=1.4.15&key=<?php echo config('map-js-key');?>&plugin=AMap.ToolBar,AMap.Scale"></script>
 	<script>
 		var avatar = "<?php  echo $_SESSION['avatar']?>";
 		var name = "<?php  echo $_SESSION['name']?>";
-		// var fid = <?//php  echo $fid?>;
 		var love_code = "<?php  echo $_SESSION['love_code']?>"
 		var data = <?php echo $files ?>;
 		var love_data = "<?php echo $love_data ?>";

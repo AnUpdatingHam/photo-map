@@ -21,6 +21,7 @@ function config($name){
 //跳转函数
 function redirect($url){
     header('Location:'.$url);
+    exit;
 }
 
 function back(){

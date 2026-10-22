@@ -1,29 +1,38 @@
 <?php
 namespace models;
 class User extends Base{
-    public function find($qq){
-        $sql = "SELECT u_qq FROM `m_users` WHERE u_qq ='$qq'";
-        $stmt = self::$pdo->query($sql);
-        $data = $stmt->fetch(\PDO::FETCH_NUM);
-        return $data;
+    // 按昵称查重
+    public function findByName($name){
+        $stmt = self::$pdo->prepare("SELECT u_id FROM `m_users` WHERE u_name = ?");
+        $stmt->execute([$name]);
+        return $stmt->fetch(\PDO::FETCH_NUM);
+    }
+
+    // 按昵称取用户（昵称即登录账号）
+    public function getUserByName($name){
+        $stmt = self::$pdo->prepare("SELECT * FROM `m_users` WHERE u_name = ?");
+        $stmt->execute([$name]);
+        return $stmt->fetch(\PDO::FETCH_ASSOC);
     }
 
     public function insert($data){
         $sql = "INSERT INTO m_users(u_qq,u_password,u_google_auth,u_name,u_avatar,u_email,u_code) VALUES(?,?,?,?,?,?,?)";
-        $inser_data = [];
-        foreach ($data as $v){
-            $inser_data[]=$v;
-        }
         $stmt = self::$pdo->prepare($sql);
-        $ret = $stmt->execute($inser_data);
-        return $ret;
+        return $stmt->execute([
+            $data['u_qq'],
+            '',
+            '',
+            $data['u_name'],
+            $data['u_avatar'],
+            $data['u_email'],
+            $data['u_code'],
+        ]);
      }
 
      public function getUserInfo($qq,$password){
-        $sql = "SELECT * FROM `m_users` WHERE u_qq ='$qq' and u_password = '$password'";
-        $stmt = self::$pdo->query($sql);    
-        $data = $stmt->fetch(\PDO::FETCH_ASSOC );
-        return $data;
+        $stmt = self::$pdo->prepare("SELECT * FROM `m_users` WHERE u_qq = ? and u_password = ?");
+        $stmt->execute([$qq,$password]);
+        return $stmt->fetch(\PDO::FETCH_ASSOC);
      }
 
 
@@ -35,8 +44,8 @@ class User extends Base{
     }
 
      public function CookiegetUserInfo($qq,$password){
-      $sql = "SELECT * FROM `m_users` WHERE u_qq ='$qq' AND u_password ='$password' ";
-      $stmt = self::$pdo->query($sql);    
+      $stmt = self::$pdo->prepare("SELECT * FROM `m_users` WHERE u_qq = ? AND u_password = ?");
+      $stmt->execute([$qq,$password]);
       $data = $stmt->fetch(\PDO::FETCH_ASSOC );
       return $data;
    }

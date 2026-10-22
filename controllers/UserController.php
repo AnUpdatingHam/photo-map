@@ -2,8 +2,6 @@
 namespace controllers;
 
 use models\User;
-use libs\Helper;
-use Vectorface\GoogleAuthenticator;
 
 class UserController extends Controller
 {
@@ -22,35 +20,25 @@ class UserController extends Controller
             return view('close.index');
         }
         $bgimg = '/images/bgimg/'.mt_rand(1,10).'.jpg';
-        $ga = new GoogleAuthenticator();
-        $secret = $ga->createSecret();
-        $qr = $ga->getQRCodeUrl('photo-map', $secret);
         view('index.register',[
             'bgimg'=>$bgimg,
-            'qr'=>$qr,
-            'secret'=>$secret
         ]);
     }
 
     public function dologin()
     {
         $data = $this->request();
-        if($data['qq'] && $data['password'] && $data['google_auth']){
-            $user = new User;
-            $user_info = $user->getUserInfo($data['qq'],encryption($data['password']));
-            if($user_info){
-                $ga = new GoogleAuthenticator();
-                $check = $ga->verifyCode($user_info['u_google_auth'], $data['google_auth'], 1);
-                if(!$check){
-                    return $this->response('google验证码不正确或已失效',401);
-                }
-                setcookie("map-info",encryption($user_info['u_qq']).'-'.encryption($user_info['u_password']),time()+7*24*3600);
-                return $this->response('登录成功',200);
-            }else{
-                return $this->response('qq号或密码错误',401);
-            }
+        $name = trim($data['name'] ?? '');
+        if($name === ''){
+            return $this->response('请输入昵称',401);
+        }
+        $user = new User;
+        $user_info = $user->getUserByName($name);
+        if($user_info){
+            setcookie("map-info",encryption($user_info['u_qq']).'-'.encryption($user_info['u_password']),time()+7*24*3600);
+            return $this->response('登录成功',200);
         }else{
-            return $this->response('缺少参数',401);
+            return $this->response('昵称不存在，请先注册',401);
         }
     }
 
@@ -60,29 +48,28 @@ class UserController extends Controller
             return $this->response('很抱歉-地图相册现已关闭注册',500);
         }
         $data = $this->request();
-        $ga = new GoogleAuthenticator();
-        $check = $ga->verifyCode($data['secret'], $data['google_auth'], 1);
-        if(!$check){
-           return $this->response('google验证码不正确或已失效',401);
+        $name = trim($data['name'] ?? '');
+        if($name === ''){
+            return $this->response('请输入昵称',401);
         }
-        $user_model = new User();
-        $qq = $user_model->find($data['qq']);
-        if($qq){
-            return $this->response('此用户已存在',401);
-        }
-        $encryption = config('encryption_value_code');
-        if($data['code'] !== $encryption) {
+        // 邀请码可选：配置里留空则不校验；填了就必须与配置一致
+        $invite = trim($data['code'] ?? '');
+        $expected = (string)config('encryption_value_code');
+        if($expected !== '' && $invite !== $expected){
             return $this->response('邀请码错误', 401);
         }
-        $qq_info= Helper::getQQInfo($data['qq']);
-        $data['name']=$qq_info['name'];
-        $data['avatar']=$qq_info['avatar'];
-        $data['email']=$qq_info['email'];
-        $data['password']=encryption($data['password']);
-        $data['love']='love'.encryption(($data['qq']));
-        unset($data['google_auth']);
-        unset($data['code']);
-        $res = $user_model->insert($data);
+        $user_model = new User();
+        if($user_model->findByName($name)){
+            return $this->response('这个昵称已经被使用了',401);
+        }
+        $avatar = '/images/avatar/Fruit-'.random_int(1,10).'.png';
+        $res = $user_model->insert([
+            'u_qq'     => $name,
+            'u_name'   => $name,
+            'u_avatar' => $avatar,
+            'u_email'  => '',
+            'u_code'   => 'love'.encryption($name),
+        ]);
         if($res){
             return $this->response('注册成功',200);
         }else{

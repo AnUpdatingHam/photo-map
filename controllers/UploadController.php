@@ -7,17 +7,126 @@ use WebPConvert\WebPConvert;
 
 class UploadController extends Controller
 {
-    
+    // 前端选点：服务端用 web key 逆地理，绕开 JS key 的 scode 限制
+    public function regeo()
+    {
+        $lng = $_GET['lng'] ?? '';
+        $lat = $_GET['lat'] ?? '';
+        if ($lng === '' || $lat === '') $this->response('参数缺失', 400);
+        $g = getGpsInfo($lng, $lat);
+        if (!empty($g['status'])) {
+            $pois = [];
+            if (!empty($g['regeocode']['pois'])) {
+                foreach ($g['regeocode']['pois'] as $p) {
+                    $pois[] = [
+                        'name' => $p['name'],
+                        'address' => $p['address'] ?: '',
+                        'distance' => (int) $p['distance']
+                    ];
+                }
+                usort($pois, function ($a, $b) { return $a['distance'] - $b['distance']; });
+            }
+            echo json_encode([
+                'code' => 200,
+                'address' => $g['regeocode']['formatted_address'],
+                'towncode' => $g['regeocode']['addressComponent']['towncode'],
+                'pois' => array_slice($pois, 0, 6)
+            ]);
+        } else {
+            $this->response('定位失败', 407);
+        }
+    }
+
+    // 前端选点：服务端用 web key 搜索地点
+    public function search()
+    {
+        $kw = trim($_GET['kw'] ?? '');
+        if ($kw === '') $this->response('关键词为空', 400);
+        $url = 'https://restapi.amap.com/v3/place/text?keywords=' . urlencode($kw)
+            . '&offset=6&page=1&extensions=base&key=' . config('map-key');
+        $r = json_decode(file_get_contents($url), 1);
+        if (!empty($r['status']) && !empty($r['pois'])) {
+            $list = [];
+            foreach ($r['pois'] as $p) {
+                $loc = explode(',', $p['location']);
+                $list[] = [
+                    'name' => $p['name'],
+                    'address' => $p['address'] ?: $p['pname'] . $p['cityname'] . $p['adname'],
+                    'lng' => $loc[0],
+                    'lat' => $loc[1]
+                ];
+            }
+            echo json_encode(['code' => 200, 'pois' => $list]);
+        } else {
+            $this->response('未找到结果', 404);
+        }
+    }
+
+    // 主地图点选：查落点附近的 POI（景点/楼宇等），命中近点就显示 POI 名
+    public function around()
+    {
+        $lng = $_GET['lng'] ?? '';
+        $lat = $_GET['lat'] ?? '';
+        if ($lng === '' || $lat === '') $this->response('参数缺失', 400);
+        $url = 'https://restapi.amap.com/v3/place/around?location=' . $lng . ',' . $lat
+            . '&radius=200&offset=8&page=1&extensions=base&key=' . config('map-key');
+        $r = json_decode(file_get_contents($url), 1);
+        if (!empty($r['status']) && !empty($r['pois'])) {
+            $list = [];
+            foreach ($r['pois'] as $p) {
+                $loc = explode(',', $p['location']);
+                $list[] = [
+                    'name' => $p['name'],
+                    'address' => $p['address'] ?: '',
+                    'lng' => $loc[0],
+                    'lat' => $loc[1],
+                    'distance' => (int) $p['distance']
+                ];
+            }
+            echo json_encode(['code' => 200, 'pois' => $list]);
+        } else {
+            echo json_encode(['code' => 200, 'pois' => []]);
+        }
+    }
+
     public function index()
     {
+        // 以 map-info cookie 为准解析当前用户，避免旧会话里 qq/id 类型异常
+        $uid = 0;
+        $uqq = '';
+        $uinfo = null;
+        $rawCaption = trim($_POST['caption'] ?? '');
+        $raw = $_COOKIE['map-info'] ?? '';
+        if ($raw) {
+            $parts = explode('-', $raw);
+            $user = new \models\User;
+            $info = $user->CookiegetUserInfo(encryption($parts[0] ?? '', 1), encryption($parts[1] ?? '', 1));
+            if ($info) {
+                $uid = (int) $info['u_id'];
+                $uqq = (string) $info['u_qq'];
+                $uinfo = $info;
+            }
+        }
+        if (!$uid && !empty($_SESSION['id']) && is_scalar($_SESSION['qq'] ?? null)) {
+            $uid = (int) $_SESSION['id'];
+            $uqq = (string) $_SESSION['qq'];
+        }
+        if (!$uid) $this->response('未登录，请先登录', 401);
+        $_SESSION['id'] = $uid;
+        $_SESSION['qq'] = $uqq;
+
         //接受表单传递过来的数据
         $file = $_FILES['file'];
+        if (empty($file['tmp_name']) || !empty($file['error'])) {
+            $this->response('图片接收失败：可能超过大小限制(当前50M)或文件损坏', 413);
+        }
         @$lngAndLat = $_POST['lng-and-lat'];
         @$time = $_POST['time'];
+        $caption = addslashes(trim($_POST['caption'] ?? ''));
         $img = $file['tmp_name'];
-        makeDir(UPURL.'photos/'.$_SESSION['qq']);
-        $dbsave_dir = 'photos/'.$_SESSION['qq'].'/'.$file['name'];
-        $saveDir = UPURL.'photos/'.$_SESSION['qq'].'/'.$file['name'];
+        makeDir(UPURL.'photos/'.$uqq);
+        $dbsave_dir = 'photos/'.$uqq.'/'.$file['name'];
+        $saveDir = UPURL.'photos/'.$uqq.'/'.$file['name'];
         $isTemp = move_uploaded_file($img,$saveDir);
         if($isTemp){
             if($lngAndLat){
@@ -26,28 +135,50 @@ class UploadController extends Controller
                 $gps_data = getGpsInfo($lngs,$lats);
                 if($gps_data['status']){
                     //获取区号用于文件移入路径
-                    $towncode = $gps_data['regeocode']['addressComponent']['towncode'];
+                    $towncode = $gps_data['regeocode']['addressComponent']['towncode'] ?? '';
+                    if (!is_string($towncode) || $towncode === '') $towncode = 'other';
                     //获取具体地点
                     $address = $gps_data['regeocode']['formatted_address'];
                         //创建目录，移动文件
-                        $dir = "photos/".$_SESSION['qq']."/{$towncode}";
+                        $dir = "photos/$uqq/{$towncode}";
                         makeDir($dir);
                         $url = $dir."/".$file['name'];
                         $slurl = $dir.'/SL'.$file['name'];
-                        //图片无损压缩
-                        $wsysurl =  UPURL.$dir.'/WEBP'.$file['name'].".webp";//保存图片的文件名
+                        $wsysurl = UPURL.$dir.'/WEBP'.$file['name'].".webp";
                         $dbwsysurl = $dir.'/WEBP'.$file['name'].".webp";
-                        WebPConvert::convert($saveDir,$wsysurl, $options=[]);
-                        $id = $_SESSION['id'];
-                        suolue($saveDir,$slurl);
+                        // 图片压缩/缩略失败不应阻断上传，失败则回退用原图
+                        try {
+                            WebPConvert::convert($saveDir, $wsysurl, []);
+                        } catch (\Throwable $e) {
+                            $dbwsysurl = $dbsave_dir;
+                        }
+                        try {
+                            suolue($saveDir, $slurl);
+                            if (!file_exists($slurl)) $slurl = $dbsave_dir;
+                        } catch (\Throwable $e) {
+                            $slurl = $dbsave_dir;
+                        }
+                        $id = $uid;
                         $upload = new Upload;
-                        $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_towncode,f_address) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$towncode', '$address')";
+                        $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_towncode,f_address,f_event) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$towncode', '$address','$caption')";
                         $isUp = $upload->insert($sql);
                         if($isUp){
                             echo json_encode([
                                 'code'=>200,
                                 'msg'=>'上传成功',
-                                'address'=>$address
+                                'address'=>$address,
+                                'data'=>[
+                                    'id'=>0,
+                                    'lng'=>$lngs,
+                                    'lat'=>$lats,
+                                    'url'=>$dbsave_dir,
+                                    'thumbnail'=>$slurl,
+                                    'nondes'=>$dbwsysurl,
+                                    'event'=>$rawCaption,
+                                    'address'=>$address,
+                                    'name'=>$uinfo['u_name'] ?? '',
+                                    'avatar'=>$uinfo['u_avatar'] ?? ''
+                                ]
                         ]);
                         }
                 }else{
@@ -74,11 +205,12 @@ class UploadController extends Controller
                         //获取定位信息
                        $gps_data = getGpsInfo($lngs,$lats);
                        //获取区号用于保存路径
-                       $towncode = $gps_data['regeocode']['addressComponent']['towncode'];
+                       $towncode = $gps_data['regeocode']['addressComponent']['towncode'] ?? '';
+                    if (!is_string($towncode) || $towncode === '') $towncode = 'other';
                        //获取具体地点
                        $address = $gps_data['regeocode']['formatted_address'];
                        //创建目录，移动文件
-                       $dir = "photos/".$_SESSION['qq']."/{$towncode}";
+                       $dir = "photos/$uqq/{$towncode}";
                        makeDir($dir);
                        //图片翻转
                        switch($exif['Orientation']) {
@@ -102,9 +234,9 @@ class UploadController extends Controller
                        suolue($url,$slurl);
                        WebPConvert::convert($url,$wsysurl,$options=[]);
                        @unlink($dir.'/'.$file['name']);
-                        $id = $_SESSION['id'];
+                        $id = $uid;
                         $upload = new Upload;
-                        $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_towncode,f_address) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$towncode', '$address')";
+                        $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_towncode,f_address,f_event) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$towncode', '$address','$caption')";
                         $isUp = $upload->insert($sql);
                         if($isUp){
                             echo json_encode([
