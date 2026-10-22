@@ -140,8 +140,9 @@ class UploadController extends Controller
                     //获取具体地点
                     $address = $gps_data['regeocode']['formatted_address'];
                         //创建目录，移动文件
+                        // 注意：$dir 是给数据库/URL 用的相对路径，落盘必须拼 UPURL，否则会写到仓库根目录
                         $dir = "photos/$uqq/{$towncode}";
-                        makeDir($dir);
+                        makeDir(UPURL.$dir);
                         $url = $dir."/".$file['name'];
                         $slurl = $dir.'/SL'.$file['name'];
                         $wsysurl = UPURL.$dir.'/WEBP'.$file['name'].".webp";
@@ -153,8 +154,8 @@ class UploadController extends Controller
                             $dbwsysurl = $dbsave_dir;
                         }
                         try {
-                            suolue($saveDir, $slurl);
-                            if (!file_exists($slurl)) $slurl = $dbsave_dir;
+                            suolue($saveDir, UPURL.$slurl);
+                            if (!file_exists(UPURL.$slurl)) $slurl = $dbsave_dir;
                         } catch (\Throwable $e) {
                             $slurl = $dbsave_dir;
                         }
@@ -210,8 +211,9 @@ class UploadController extends Controller
                        //获取具体地点
                        $address = $gps_data['regeocode']['formatted_address'];
                        //创建目录，移动文件
+                       // 同样：$dir 只用于数据库/URL，落盘统一走 UPURL
                        $dir = "photos/$uqq/{$towncode}";
-                       makeDir($dir);
+                       makeDir(UPURL.$dir);
                        //图片翻转
                        switch($exif['Orientation']) {
                            case 8:
@@ -224,16 +226,26 @@ class UploadController extends Controller
                                $image = imagerotate($image,-90,0);
                                break;
                        }
-                       imagejpeg($image, $dir.'/'.$file['name']);
+                       $absRotated = UPURL.$dir.'/'.$file['name'];
+                       imagejpeg($image, $absRotated);
                        imagedestroy($image);
                        $url = $dir."/".$file['name'];
                        $slurl = $dir.'/SL_'.$file['name'];
                        $wsysurl =  UPURL.$dir.'/WEBP'.$file['name'].".webp";//保存图片的文件名
                        $dbwsysurl = $dir.'/WEBP'.$file['name'].".webp";
-                       //缩略图
-                       suolue($url,$slurl);
-                       WebPConvert::convert($url,$wsysurl,$options=[]);
-                       @unlink($dir.'/'.$file['name']);
+                       //缩略图/压缩失败不阻断上传，回退用原图
+                       try {
+                           suolue($absRotated, UPURL.$slurl);
+                           if (!file_exists(UPURL.$slurl)) $slurl = $dbsave_dir;
+                       } catch (\Throwable $e) {
+                           $slurl = $dbsave_dir;
+                       }
+                       try {
+                           WebPConvert::convert($absRotated, $wsysurl, []);
+                       } catch (\Throwable $e) {
+                           $dbwsysurl = $dbsave_dir;
+                       }
+                       @unlink($absRotated);
                         $id = $uid;
                         $upload = new Upload;
                         $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_towncode,f_address,f_event) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$towncode', '$address','$caption')";

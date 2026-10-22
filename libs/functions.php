@@ -111,11 +111,19 @@ function suolue($filename,$savePath){
     $n_w=$width*$per;
     $n_h=$height*$per;
     $new=imagecreatetruecolor($n_w, $n_h);
-    $img=imagecreatefromjpeg($filename);
+    // 上传支持 jpg/png/gif，不能固定用 imagecreatefromjpeg
+    $img=imagecreatefromstring(file_get_contents($filename));
+    if(!$img){
+        imagedestroy($new);
+        return false;
+    }
+    // PNG/GIF 可能有透明通道，缩略图先铺白底，避免变黑
+    imagefill($new, 0, 0, imagecolorallocate($new, 255, 255, 255));
     //copy部分图像并调整
     imagecopyresized($new, $img,0, 0,0, 0,$n_w, $n_h, $width, $height);
     //图像输出新图片、另存为
     imagejpeg($new,$savePath);
     imagedestroy($new);
     imagedestroy($img);
+    return true;
 }
