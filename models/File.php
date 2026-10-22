@@ -29,4 +29,13 @@ class File extends Base{
       ]);
       return $sta;
    }
+
+   public function addCaption($fid,$content){
+      $uid = (int)($_SESSION['id'] ?? 0);
+      if (!$uid) return false;
+      $sql = "UPDATE m_files SET f_caption= ? WHERE f_uid= ? and f_id= ?";
+      $stmt = self::$pdo->prepare($sql);
+      $sta = $stmt->execute([$content, $uid, (int)$fid]);
+      return $sta;
+   }
 }

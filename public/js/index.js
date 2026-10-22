@@ -9,54 +9,180 @@ map.addControl(new AMap.Scale());
 
 var infoWindow = new AMap.InfoWindow({ offset: new AMap.Pixel(0, -20) });
 
-function popupTemplate(photo) {
-    var src = photo.thumbnail || photo.url;
-    var viewer = photo.nondes || photo.url;
-    var mediaHtml = photo.video
-        ? '<video controls width="300"><source src="' + photo.video + '" type="video/mp4"/></video>'
-        : '<img src="' + src + '" viewer-src="' + viewer + '" style="max-width:300px;">';
-    return '<div id="layer-photos-map" style="max-width:320px;">' +
-        mediaHtml +
-        '<div style="padding:10px 0 5px 0">' +
-        '<img src="' + photo.avatar + '" style="width:30px;border-radius:50%;vertical-align:bottom;">' +
-        '<span class="address">' + photo.name + '</span>' +
+/* ===== 照片分组 / 点位轮播 / 灯箱 ===== */
+var bounds = [];
+var groups = {};
+
+function photoCaption(p) {
+    return (p.caption && String(p.caption).trim()) ? p.caption : (p.event || '');
+}
+
+function ensureGroup(lng, lat) {
+    var key = lng.toFixed(4) + ',' + lat.toFixed(4);
+    if (!groups[key]) {
+        groups[key] = { key: key, lng: lng, lat: lat, photos: [], idx: 0, timer: null, marker: null };
+    }
+    return groups[key];
+}
+
+function renderChip(g) {
+    var p = g.photos[g.idx];
+    var src = p.thumbnail || p.url;
+    var n = g.photos.length;
+    var badge = n > 1
+        ? '<span style="position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 4px;background:#1e88e5;color:#fff;border-radius:9px;font-size:11px;line-height:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.3);">' + n + '</span>' : '';
+    var cap = photoCaption(p);
+    var capHtml = cap ? '<div style="max-width:120px;margin-top:3px;padding:2px 6px;background:rgba(0,0,0,.65);color:#fff;border-radius:4px;font-size:11px;line-height:1.4;">' + cap + '</div>' : '';
+    g.marker.setContent(
+        '<div style="position:relative;display:flex;flex-direction:column;align-items:center;">' +
+        '<div style="position:relative;width:52px;height:52px;border-radius:8px;overflow:hidden;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);background:#eef1f4;">' +
+        '<div class="gm-spin" style="position:absolute;left:50%;top:50%;margin:-9px 0 0 -9px;"></div>' +
+        '<img src="' + src + '" style="width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .35s;" onload="this.style.opacity=1;var s=this.parentNode.querySelector(\'.gm-spin\');if(s)s.remove()" onerror="var s=this.parentNode.querySelector(\'.gm-spin\');if(s)s.remove()">' +
+        '</div>' + badge + capHtml + '</div>'
+    );
+}
+
+function startCarousel(g) {
+    if (g.timer) clearInterval(g.timer);
+    if (g.photos.length < 2) return;
+    g.timer = setInterval(function () {
+        g.idx = (g.idx + 1) % g.photos.length;
+        renderChip(g);
+    }, 2600);
+}
+
+function addPhotoToMap(photo) {
+    var lng = parseFloat(photo.lng), lat = parseFloat(photo.lat);
+    if (!lng || !lat) return;
+    var g = ensureGroup(lng, lat);
+    g.photos.push(photo);
+    if (!g.marker) {
+        g.marker = new AMap.Marker({
+            position: [lng, lat],
+            content: '<div class="gm-spin" style="width:52px;height:52px;border-radius:8px;background:#eef1f4;display:flex;align-items:center;justify-content:center;"></div>',
+            anchor: 'bottom-center'
+        });
+        g.marker.setMap(map);
+        bounds.push(new AMap.LngLat(lng, lat));
+        g.marker.on('click', function () { openCard(g, 0); });
+    }
+    g.idx = g.photos.length - 1;
+    renderChip(g);
+    startCarousel(g);
+}
+
+(data.rows || []).forEach(function (photo) { addPhotoToMap(photo); });
+if (bounds.length) {
+    map.setFitView(null, false, [60, 60, 60, 60]);
+}
+
+/* 加载转圈样式（占位 + 上传按钮） */
+var styleEl = document.createElement('style');
+styleEl.textContent =
+    '.gm-spin{width:18px;height:18px;border:2px solid #d5dde5;border-top-color:#1e88e5;border-radius:50%;animation:gmrot .8s linear infinite;}' +
+    '@keyframes gmrot{to{transform:rotate(360deg);}}';
+document.head.appendChild(styleEl);
+
+/* ===== 精致小弹框（非全屏）：翻页 / 改签名 / 下载 / 删除 ===== */
+var activeGroup = null, activeIdx = 0;
+
+function photoCardHtml(g, i) {
+    var p = g.photos[i];
+    var src = p.thumbnail || p.url;
+    var multi = g.photos.length > 1;
+    var cap = photoCaption(p);
+    var arrows = multi
+        ? '<button onclick="cardNav(-1)" style="position:absolute;left:6px;top:72px;width:30px;height:30px;border:none;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:20px;line-height:30px;cursor:pointer;">‹</button>' +
+          '<button onclick="cardNav(1)" style="position:absolute;right:6px;top:72px;width:30px;height:30px;border:none;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:20px;line-height:30px;cursor:pointer;">›</button>'
+        : '';
+    var counter = multi
+        ? '<span style="position:absolute;right:8px;top:8px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:2px 9px;border-radius:10px;">' + (i + 1) + ' / ' + g.photos.length + '</span>'
+        : '';
+    var capLine = cap
+        ? '<div style="font-size:13px;color:#333;line-height:1.5;margin:8px 0 4px;">“' + cap + '”</div>'
+        : '<div style="font-size:12px;color:#bbb;margin:8px 0 4px;">还没写签名，点下面“签名”补一句</div>';
+    return '<div style="width:300px;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.18);font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',sans-serif;">' +
+        '<div style="position:relative;">' +
+            '<img src="' + src + '" style="width:100%;height:180px;object-fit:cover;display:block;background:#f2f3f5;">' +
+            arrows + counter +
         '</div>' +
-        '<div class="mianshutext">' + (photo.event || '') + '</div>' +
-        '<p class="address">' + photo.address + '<br>(' + photo.data_time + ')</p>' +
-        '<a href="javascript:;" onclick="delPhoto(' + photo.id + ')">抹掉此足迹</a>&nbsp;&nbsp;' +
-        '<a href="javascript:;" onclick="miaoShu(this,' + photo.id + ')" data-content="' + (photo.event || '') + '">文字描述</a>&nbsp;&nbsp;' +
-        '<a href="' + photo.url + '" download>下载</a>' +
+        '<div style="padding:12px 14px 14px;">' +
+            '<div style="display:flex;align-items:center;gap:8px;">' +
+                '<img src="' + p.avatar + '" style="width:26px;height:26px;border-radius:50%;object-fit:cover;">' +
+                '<span style="font-size:13px;font-weight:600;color:#222;">' + p.name + '</span>' +
+            '</div>' +
+            capLine +
+            '<div style="display:flex;align-items:flex-start;gap:5px;font-size:12px;color:#8a8f99;line-height:1.5;">' +
+                '<span style="flex:none;">📍</span><span>' + (p.address || '') + '</span>' +
+            '</div>' +
+            '<div style="height:1px;background:#f0f1f3;margin:11px 0;"></div>' +
+            '<div style="display:flex;gap:8px;">' +
+                '<button onclick="cardEditCaption()" style="flex:1;padding:7px 0;border:none;border-radius:18px;background:#eef4fb;color:#1e88e5;font-size:12px;cursor:pointer;">✎ 签名</button>' +
+                '<a href="' + p.url + '" download style="flex:1;text-align:center;padding:7px 0;border-radius:18px;background:#f2f5f8;color:#1e88e5;font-size:12px;text-decoration:none;">下载</a>' +
+                '<button onclick="cardDel()" style="padding:7px 12px;border:none;border-radius:18px;background:#fff0f0;color:#e53935;font-size:12px;cursor:pointer;">删除</button>' +
+            '</div>' +
+        '</div>' +
         '</div>';
 }
 
-var bounds = [];
-
-function addPhotoMarker(photo) {
-    var lng = parseFloat(photo.lng), lat = parseFloat(photo.lat);
-    if (!lng || !lat) return null;
-    var src = photo.thumbnail || photo.url;
-    var cap = photo.event ? '<div style="max-width:120px;margin-top:3px;padding:2px 6px;background:rgba(0,0,0,.65);color:#fff;border-radius:4px;font-size:11px;line-height:1.4;white-space:normal;">' + photo.event + '</div>' : '';
-    var chip = '<div style="display:flex;flex-direction:column;align-items:center;">' +
-        '<div style="width:52px;height:52px;border-radius:8px;overflow:hidden;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);background:#fff;">' +
-        '<img src="' + src + '" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.opacity=0"></div>' +
-        cap + '</div>';
-    var marker = new AMap.Marker({
-        position: [lng, lat],
-        content: chip,
-        anchor: 'bottom-center'
-    });
-    marker.setMap(map);
-    bounds.push(new AMap.LngLat(lng, lat));
-    marker.on('click', function () {
-        infoWindow.setContent(popupTemplate(photo));
-        infoWindow.open(map, [lng, lat]);
-    });
-    return marker;
+function openCard(g, i) {
+    activeGroup = g; activeIdx = i;
+    infoWindow.setContent(photoCardHtml(g, i));
+    infoWindow.open(map, [g.lng, g.lat]);
 }
 
-(data.rows || []).forEach(function (photo) { addPhotoMarker(photo); });
-if (bounds.length) {
-    map.setFitView(null, false, [60, 60, 60, 60]);
+function cardNav(d) {
+    if (!activeGroup) return;
+    activeIdx = (activeIdx + d + activeGroup.photos.length) % activeGroup.photos.length;
+    infoWindow.setContent(photoCardHtml(activeGroup, activeIdx));
+}
+
+function cardEditCaption() {
+    var p = activeGroup.photos[activeIdx];
+    layui.use('layer', function () {
+        var layer = layui.layer;
+        layer.open({
+            title: '修改这张的签名',
+            area: ['420px', '300px'],
+            content: '<div style="padding:14px;"><textarea id="capIn" class="layui-textarea" style="height:160px;">' + (p.caption || '') + '</textarea></div>',
+            btn: ['保存'],
+            yes: function (idx) {
+                var content = (document.getElementById('capIn').value || '').trim();
+                var btn = document.querySelector('#layui-layer' + idx + ' .layui-layer-btn a');
+                if (btn) { btn.disabled = true; btn.innerText = '保存中…'; }
+                axios.post('/index💕addcaption', { fid: p.id, content: content }).then(function (res) {
+                    if (res.data && res.data.code == 200) {
+                        p.caption = content;
+                        layer.close(idx);
+                        infoWindow.setContent(photoCardHtml(activeGroup, activeIdx));
+                        renderChip(activeGroup);
+                        layer.msg('签名已保存');
+                    } else {
+                        if (btn) { btn.disabled = false; btn.innerText = '保存'; }
+                        layer.msg((res.data && res.data.msg) || '保存失败');
+                    }
+                }).catch(function () {
+                    if (btn) { btn.disabled = false; btn.innerText = '保存'; }
+                    layer.msg('网络错误，未保存');
+                });
+            }
+        });
+    });
+}
+
+function cardDel() {
+    var p = activeGroup.photos[activeIdx];
+    delPhoto(p.id, function () {
+        activeGroup.photos.splice(activeIdx, 1);
+        if (!activeGroup.photos.length) {
+            if (activeGroup.marker) activeGroup.marker.setMap(null);
+            infoWindow.close();
+        } else {
+            activeIdx = Math.min(activeIdx, activeGroup.photos.length - 1);
+            renderChip(activeGroup);
+            infoWindow.setContent(photoCardHtml(activeGroup, activeIdx));
+        }
+    });
 }
 
 // 点击主地图：先出地点信息卡片（POI 名或逆地理地址），卡片上再有“添加图片”按钮
@@ -163,24 +289,30 @@ function openAddPhoto() {
 
 /* ===== 上传：内嵌选点地图（逆地理/搜索走服务端 web key） ===== */
 var pendingFiles = [];
+var capMode = 'shared';
 
 function addPhoto() {
     var loc = window.__pick || {};
     layui.use('layer', function () {
         layui.layer.open({
             type: 1,
-            area: ['560px', '560px'],
-            title: '在这里加一张照片',
+            area: ['600px', '620px'],
+            title: '在这里加照片',
             shade: 0.4,
             anim: 1,
-            content: '<div style="padding:16px;">' +
+            content: '<div style="padding:16px;max-height:82vh;overflow:auto;">' +
                 '<div style="margin-bottom:12px;color:#333;"><b>' + (loc.name || '所选位置') + '</b>' +
                 '<div style="color:#888;font-size:12px;margin-top:2px;">' + (loc.address || '') + '</div></div>' +
-                '<div id="dropZone" style="border:2px dashed #ccd6e0;border-radius:8px;padding:36px;text-align:center;color:#999;cursor:pointer;background:#fafafa;">点击选择图片，或把图片拖到这里<br><span style="font-size:12px">支持 jpg/png/gif/webp/bmp 等常见格式，可多选</span></div>' +
+                '<div id="dropZone" style="border:2px dashed #ccd6e0;border-radius:10px;padding:30px;text-align:center;color:#999;cursor:pointer;background:#fafafa;transition:.2s;">点击选择图片，或把图片拖到这里<br><span style="font-size:12px">支持 jpg/png/gif/webp/bmp，可多选</span></div>' +
                 '<input type="file" id="fileInput" multiple accept="image/*" style="display:none;">' +
-                '<div id="previewList" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;"></div>' +
-                '<textarea id="caption" class="layui-textarea" placeholder="写点什么…（可选）" style="margin-top:12px;height:70px;"></textarea>' +
-                '<div style="margin-top:12px;text-align:right;"><button class="layui-btn" id="uploadBtn">开始上传</button></div>' +
+                '<div style="margin:14px 0 8px;display:inline-flex;border:1px solid #dde3e9;border-radius:18px;overflow:hidden;font-size:12px;">' +
+                    '<button type="button" data-mode="shared" class="mode-btn" style="padding:6px 14px;border:none;background:#1e88e5;color:#fff;cursor:pointer;">共用一条文案</button>' +
+                    '<button type="button" data-mode="per" class="mode-btn" style="padding:6px 14px;border:none;background:#fff;color:#555;cursor:pointer;">每张单独写</button>' +
+                '</div>' +
+                '<div id="sharedCap"><textarea id="caption" class="layui-textarea" placeholder="所有图片共用这条文案（可选）" style="height:60px;"></textarea></div>' +
+                '<div id="perCap" style="display:none;color:#888;font-size:12px;margin-bottom:6px;">为每张图分别写一句</div>' +
+                '<div id="previewList" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:10px;"></div>' +
+                '<div style="margin-top:14px;text-align:right;"><button class="layui-btn" id="uploadBtn">开始上传</button></div>' +
                 '</div>',
             success: bindUploadUI
         });
@@ -192,6 +324,7 @@ function bindUploadUI() {
         input = document.getElementById('fileInput'),
         list = document.getElementById('previewList');
     pendingFiles = [];
+    capMode = 'shared';
 
     zone.onclick = function () { input.click(); };
     zone.ondragover = function (e) { e.preventDefault(); zone.style.background = '#eef6ff'; };
@@ -203,40 +336,68 @@ function bindUploadUI() {
     };
     input.onchange = function () { addFiles(input.files); input.value = ''; };
 
+    // 文案模式切换
+    document.querySelectorAll('.mode-btn').forEach(function (btn) {
+        btn.onclick = function () {
+            capMode = btn.dataset.mode;
+            document.querySelectorAll('.mode-btn').forEach(function (b) {
+                var on = b === btn;
+                b.style.background = on ? '#1e88e5' : '#fff';
+                b.style.color = on ? '#fff' : '#555';
+            });
+            document.getElementById('sharedCap').style.display = capMode === 'shared' ? 'block' : 'none';
+            document.getElementById('perCap').style.display = capMode === 'per' ? 'block' : 'none';
+            refreshPerInputs();
+        };
+    });
+
     function addFiles(fs) {
         [].forEach.call(fs, function (f) {
             if (!/^image\//.test(f.type)) return;
-            pendingFiles.push(f);
             var url = URL.createObjectURL(f);
+            var item = { file: f, url: url, box: null, captionInput: null };
+            pendingFiles.push(item);
             var box = document.createElement('div');
-            box.style.cssText = 'position:relative;width:72px;height:72px;';
-            box.innerHTML = '<img src="' + url + '" style="width:72px;height:72px;object-fit:cover;border-radius:6px;">' +
-                '<span style="position:absolute;top:-7px;right:-7px;cursor:pointer;background:#FF5722;color:#fff;border-radius:50%;width:18px;height:18px;line-height:18px;text-align:center;font-size:12px;">×</span>';
-            box.querySelector('span').onclick = function () {
-                pendingFiles = pendingFiles.filter(function (x) { return x !== f; });
+            box.style.cssText = 'position:relative;width:86px;';
+            box.innerHTML = '<img src="' + url + '" style="width:86px;height:86px;object-fit:cover;border-radius:8px;display:block;">' +
+                '<span class="rm" style="position:absolute;top:-7px;right:-7px;cursor:pointer;background:#FF5722;color:#fff;border-radius:50%;width:18px;height:18px;line-height:18px;text-align:center;font-size:12px;">×</span>' +
+                '<input class="per-inp" placeholder="这张的文案…" style="display:none;width:100%;margin-top:4px;padding:5px 6px;font-size:12px;border:1px solid #dde3e9;border-radius:6px;box-sizing:border-box;">';
+            box.querySelector('.rm').onclick = function () {
+                pendingFiles = pendingFiles.filter(function (x) { return x !== item; });
                 box.remove();
             };
+            item.box = box;
+            item.captionInput = box.querySelector('.per-inp');
             list.appendChild(box);
+            refreshPerInputs();
+        });
+    }
+
+    function refreshPerInputs() {
+        pendingFiles.forEach(function (it) {
+            it.captionInput.style.display = capMode === 'per' ? 'block' : 'none';
         });
     }
 
     document.getElementById('uploadBtn').onclick = function () {
         if (!pendingFiles.length) { layui.layer.msg('先选图片'); return; }
         var btn = document.getElementById('uploadBtn');
-        btn.disabled = true; btn.innerText = '上传中…';
-        var caption = document.getElementById('caption').value;
+        var shared = (document.getElementById('caption') || {}).value || '';
+        btn.disabled = true;
+        btn.innerHTML = '<span class="gm-spin" style="display:inline-block;vertical-align:middle;margin-right:6px;"></span>上传中…';
         var total = pendingFiles.length, done = 0, failed = 0;
         var lastPoint = null;
-        pendingFiles.forEach(function (f) {
+        pendingFiles.forEach(function (item) {
             var fd = new FormData();
-            fd.append('file', f);
+            fd.append('file', item.file);
             fd.append('lng-and-lat', (window.__pick && window.__pick.lnglat) || '');
-            fd.append('caption', caption);
+            fd.append('caption', shared);                       // 共用文案 → f_event
+            fd.append('per-caption', capMode === 'per' ? (item.captionInput.value || '') : ''); // 单张 → f_caption
             axios.post('upload💕index', fd).then(function (res) {
                 done++;
                 if (res.data && res.data.code == 200 && res.data.data) {
                     var photo = res.data.data;
-                    addPhotoMarker(photo);
+                    addPhotoToMap(photo);
                     lastPoint = [parseFloat(photo.lng), parseFloat(photo.lat)];
                 } else {
                     failed++;
@@ -251,8 +412,10 @@ function bindUploadUI() {
         });
         function finish() {
             if (done !== total) return;
-            btn.disabled = false; btn.innerText = '开始上传';
+            btn.disabled = false;
+            btn.innerText = '开始上传';
             if (failed === 0) {
+                infoWindow.close();              // 关闭选点信息卡片，避免遮挡新照片
                 layui.layer.closeAll();
                 if (lastPoint) map.setZoomAndCenter(16, lastPoint);
                 layui.layer.msg('已添加到地图');
@@ -295,16 +458,11 @@ function bind() {
         });
 }
 
-function delPhoto(fid) {
-    layui.use('layer', function () {
-        layui.layer.open({
-            title: '确定删除?', content: '<img width="180" src="/images/wuwu.gif">',
-            btn: ['删除', '取消'],
-            yes: function (idx) {
-                axios.post('/index💕delete', { fid: fid }).then(function (res) {
-                    layui.layer.msg(res.data.msg, function () { location.reload(); });
-                });
-            }
+function delPhoto(fid, done) {
+    axios.post('/index💕delete', { fid: fid }).then(function (res) {
+        if (typeof done === 'function') { done(); return; }
+        layui.use('layer', function () {
+            layui.layer.msg(res.data.msg, function () { location.reload(); });
         });
     });
 }

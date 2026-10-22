@@ -122,7 +122,8 @@ class UploadController extends Controller
         }
         @$lngAndLat = $_POST['lng-and-lat'];
         @$time = $_POST['time'];
-        $caption = addslashes(trim($_POST['caption'] ?? ''));
+        $caption = addslashes(trim($_POST['caption'] ?? ''));        // 共用文案 → f_event
+        $perCaption = addslashes(trim($_POST['per-caption'] ?? '')); // 单张文案 → f_caption
         $img = $file['tmp_name'];
         makeDir(UPURL.'photos/'.$uqq);
         $dbsave_dir = 'photos/'.$uqq.'/'.$file['name'];
@@ -161,21 +162,22 @@ class UploadController extends Controller
                         }
                         $id = $uid;
                         $upload = new Upload;
-                        $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_towncode,f_address,f_event) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$towncode', '$address','$caption')";
-                        $isUp = $upload->insert($sql);
-                        if($isUp){
+                        $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_towncode,f_address,f_event,f_caption) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$towncode', '$address','$caption','$perCaption')";
+                        $newId = $upload->insert($sql);
+                        if($newId){
                             echo json_encode([
                                 'code'=>200,
                                 'msg'=>'上传成功',
                                 'address'=>$address,
                                 'data'=>[
-                                    'id'=>0,
+                                    'id'=>(int)$newId,
                                     'lng'=>$lngs,
                                     'lat'=>$lats,
                                     'url'=>$dbsave_dir,
                                     'thumbnail'=>$slurl,
                                     'nondes'=>$dbwsysurl,
                                     'event'=>$rawCaption,
+                                    'caption'=>trim($_POST['per-caption'] ?? ''),
                                     'address'=>$address,
                                     'name'=>$uinfo['u_name'] ?? '',
                                     'avatar'=>$uinfo['u_avatar'] ?? ''
@@ -248,7 +250,7 @@ class UploadController extends Controller
                        @unlink($absRotated);
                         $id = $uid;
                         $upload = new Upload;
-                        $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_towncode,f_address,f_event) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$towncode', '$address','$caption')";
+                        $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_towncode,f_address,f_event,f_caption) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$towncode', '$address','$caption','$perCaption')";
                         $isUp = $upload->insert($sql);
                         if($isUp){
                             echo json_encode([

@@ -117,4 +117,20 @@ class IndexController extends Controller
             }
         }
     }
+
+    public function addcaption()
+    {
+        if (empty($_SESSION['id'])) return $this->response('未登录', 401);
+        $data = $this->request();
+        $fid = (int)($data['fid'] ?? 0);
+        $content = trim((string)($data['content'] ?? ''));
+        if (!$fid) return $this->response('参数错误', 400);
+        $file = new File;
+        $status = $file->addCaption($fid, $content);
+        if ($status) {
+            return $this->response('签名已保存', 200);
+        } else {
+            return $this->response('保存失败或无变化', 400);
+        }
+    }
 }

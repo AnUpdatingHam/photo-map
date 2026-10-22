@@ -2,6 +2,7 @@
 namespace models;
 class Upload extends Base{
     public function insert($sql){
-       return self::$pdo->exec($sql);
+       $ok = self::$pdo->exec($sql);
+       return $ok ? self::$pdo->lastInsertId() : false;
     }
 }
