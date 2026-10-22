@@ -105,25 +105,34 @@ function makeDir($dir){
 }
 
 //图片缩略函数
-function suolue($filename,$savePath){
-    $per=0.4;
-    list($width, $height)=getimagesize($filename);
-    $n_w=$width*$per;
-    $n_h=$height*$per;
-    $new=imagecreatetruecolor($n_w, $n_h);
-    // 上传支持 jpg/png/gif，不能固定用 imagecreatefromjpeg
-    $img=imagecreatefromstring(file_get_contents($filename));
-    if(!$img){
-        imagedestroy($new);
+// 固定最大边缩放：长边不超过 $maxSize，短边按比例，绝不放大
+// 之前用 0.4 比例缩放的问题：大图缩完仍然很大（4000x3000 -> 1600x1200），
+// 小图缩完可能变成 0px（1x1 -> 0），既起不到缩略图作用，也会让 GD 报错。
+function suolue($filename,$savePath,$maxSize=320){
+    $info = @getimagesize($filename);
+    if(!$info) return false;
+    $width = (int)$info[0];
+    $height = (int)$info[1];
+    if($width < 1 || $height < 1) return false;
+
+    $scale = min(1, $maxSize / max($width, $height));
+    $n_w = max(1, (int)round($width * $scale));
+    $n_h = max(1, (int)round($height * $scale));
+
+    // 上传支持 jpg/png/gif/webp，不能固定用 imagecreatefromjpeg
+    $img = @imagecreatefromstring(file_get_contents($filename));
+    if(!$img) return false;
+
+    $new = imagecreatetruecolor($n_w, $n_h);
+    if(!$new){
+        imagedestroy($img);
         return false;
     }
     // PNG/GIF 可能有透明通道，缩略图先铺白底，避免变黑
     imagefill($new, 0, 0, imagecolorallocate($new, 255, 255, 255));
-    //copy部分图像并调整
-    imagecopyresized($new, $img,0, 0,0, 0,$n_w, $n_h, $width, $height);
-    //图像输出新图片、另存为
-    imagejpeg($new,$savePath);
+    imagecopyresampled($new, $img, 0, 0, 0, 0, $n_w, $n_h, $width, $height);
+    $ok = imagejpeg($new, $savePath, 85);
     imagedestroy($new);
     imagedestroy($img);
-    return true;
+    return $ok;
 }
