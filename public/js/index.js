@@ -579,7 +579,6 @@ function photoCardHtml(g, i) {
             '</div>' +
             '<div style="height:1px;background:#f0f1f3;margin:11px 0;"></div>' +
             '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-                '<button onclick="cardEditCaption()" style="flex:1;padding:7px 0;border:none;border-radius:18px;background:#eef4fb;color:#1e88e5;font-size:12px;cursor:pointer;">✎ 签名</button>' +
                 '<button onclick="cardEditRecord()" style="flex:1;padding:7px 0;border:none;border-radius:18px;background:#f1ecff;color:#6a4bd8;font-size:12px;cursor:pointer;">✎ 编辑回忆</button>' +
                 '<a href="' + p.url + '" download style="flex:1;text-align:center;padding:7px 0;border-radius:18px;background:#f2f5f8;color:#1e88e5;font-size:12px;text-decoration:none;">下载</a>' +
                 '<button onclick="cardDel()" style="padding:7px 12px;border:none;border-radius:18px;background:#fff0f0;color:#e53935;font-size:12px;cursor:pointer;">删除</button>' +
@@ -600,39 +599,6 @@ function cardNav(d) {
     infoWindow.setContent(photoCardHtml(activeGroup, activeIdx));
 }
 
-function cardEditCaption() {
-    var p = activeGroup.photos[activeIdx];
-    layui.use('layer', function () {
-        var layer = layui.layer;
-        layer.open({
-            title: '修改这张的签名',
-            area: ['420px', '300px'],
-            content: '<div style="padding:14px;"><textarea id="capIn" class="layui-textarea" style="height:160px;">' + (p.caption || '') + '</textarea></div>',
-            btn: ['保存'],
-            yes: function (idx) {
-                var content = (document.getElementById('capIn').value || '').trim();
-                var btn = document.querySelector('#layui-layer' + idx + ' .layui-layer-btn a');
-                if (btn) { btn.disabled = true; btn.innerText = '保存中…'; }
-                axios.post('/index💕addcaption', { fid: p.id, content: content }).then(function (res) {
-                    if (res.data && res.data.code == 200) {
-                        p.caption = content;
-                        layer.close(idx);
-                        infoWindow.setContent(photoCardHtml(activeGroup, activeIdx));
-                        renderChip(activeGroup);
-                        layer.msg('签名已保存');
-                    } else {
-                        if (btn) { btn.disabled = false; btn.innerText = '保存'; }
-                        layer.msg((res.data && res.data.msg) || '保存失败');
-                    }
-                }).catch(function () {
-                    if (btn) { btn.disabled = false; btn.innerText = '保存'; }
-                    layer.msg('网络错误，未保存');
-                });
-            }
-        });
-    });
-}
-
 function cardEditRecord() {
     if (!activeGroup) return;
     var g = activeGroup;
@@ -648,11 +614,13 @@ function cardEditRecord() {
         var layer = layui.layer;
         layer.open({
             title: '编辑这段回忆',
-            area: ['440px', '460px'],
+            area: ['440px', '520px'],
             content:
                 '<div style="padding:16px 18px;font-family:-apple-system,\'PingFang SC\',sans-serif;">' +
                 '<div style="font-size:12px;color:#888;margin-bottom:4px;">事件 / 文案（整段共用）</div>' +
-                '<textarea id="evIn" class="layui-textarea" style="height:76px;">' + ev + '</textarea>' +
+                '<textarea id="evIn" class="layui-textarea" style="height:64px;">' + ev + '</textarea>' +
+                '<div style="font-size:12px;color:#888;margin:12px 0 4px;">这张的签名（可选，仅当前这张）</div>' +
+                '<textarea id="capIn" class="layui-textarea" style="height:56px;">' + (base.caption || '') + '</textarea>' +
                 '<div style="display:flex;gap:12px;margin-top:12px;">' +
                   '<div style="flex:1;"><div style="font-size:12px;color:#888;margin-bottom:4px;">开始时间</div>' +
                   '<input id="stIn" type="datetime-local" class="layui-input" value="' + toLocalInput(start) + '"></div>' +
@@ -680,6 +648,7 @@ function cardEditRecord() {
             },
             yes: function (idx) {
                 var event = document.getElementById('evIn').value.trim();
+                var cap = (document.getElementById('capIn').value || '').trim();
                 var st = (document.getElementById('stIn').value || '').replace('T', ' ');
                 var et = (document.getElementById('etIn').value || '').replace('T', ' ');
                 var btn = document.querySelector('#layui-layer' + idx + ' .layui-layer-btn a');
@@ -688,17 +657,23 @@ function cardEditRecord() {
                     fids: g.photos.map(function (x) { return x.id; }),
                     event: event, start_time: st, end_time: et, mood: layer._chosenMood() || ''
                 }).then(function (res) {
-                    if (res.data && res.data.code == 200) {
+                    if (!(res.data && res.data.code == 200)) {
+                        if (btn) { btn.disabled = false; btn.innerText = '保存'; }
+                        layer.msg((res.data && res.data.msg) || '保存失败');
+                        return;
+                    }
+                    // 同步保存当前这张的签名 f_caption（addcaption）
+                    var saveCap = axios.post('/index💕addcaption', { fid: base.id, content: cap })
+                        .catch(function () { return { data: { code: 400 } }; });
+                    return saveCap.then(function () {
                         g.photos.forEach(function (x) { x.event = event; x.start_time = st; x.end_time = et; x.mood = layer._chosenMood() || ''; });
+                        base.caption = cap;
                         layer.close(idx);
                         scheduleTrail();                       // 重算时间 → 重绘连接线与序号
                         infoWindow.setContent(photoCardHtml(g, activeIdx));
                         renderChip(g);
                         layer.msg('已保存');
-                    } else {
-                        if (btn) { btn.disabled = false; btn.innerText = '保存'; }
-                        layer.msg((res.data && res.data.msg) || '保存失败');
-                    }
+                    });
                 }).catch(function () {
                     if (btn) { btn.disabled = false; btn.innerText = '保存'; }
                     layer.msg('网络错误，未保存');
