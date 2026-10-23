@@ -31,6 +31,9 @@ class IndexController extends Controller
                     if($data[$v]['event']==null){
                         $data[$v]['event']='';
                     }
+                    if($data[$v]['batch']===null){
+                        $data[$v]['batch']='';
+                    }
                 }
                 $files = [
                     "rows" => $data,
