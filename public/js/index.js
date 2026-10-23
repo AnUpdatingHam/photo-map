@@ -345,7 +345,7 @@ function openTimelinePanel() {
     var minisHtml = records.map(function (r, i) {
         var first = r.photos[0];
         var hue = Math.round(i / Math.max(1, records.length - 1) * 300);
-        return '<div class="tl-mini" data-i="' + i + '" style="position:absolute;left:50%;top:50%;width:150px;height:190px;margin:-95px 0 0 -75px;border-radius:18px;overflow:hidden;cursor:pointer;background:rgba(255,255,255,.12);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.28);box-shadow:0 14px 40px rgba(0,0,0,.4);transition:transform 1s cubic-bezier(.25,.8,.3,1),opacity .8s ease,box-shadow .3s;">' +
+        return '<div class="tl-mini" data-i="' + i + '" style="position:absolute;left:50%;top:50%;width:150px;height:190px;margin:-95px 0 0 -75px;border-radius:18px;overflow:hidden;cursor:pointer;background:rgba(255,255,255,.12);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.28);box-shadow:0 14px 40px rgba(0,0,0,.4);transition:transform 1.15s cubic-bezier(.22,.8,.28,1),opacity .9s ease,box-shadow .3s;">' +
             '<div style="height:118px;position:relative;"><img src="' + (first.nondes || first.thumbnail || first.url) + '" style="width:100%;height:100%;object-fit:cover;display:block;">' +
             '<span style="position:absolute;left:8px;top:8px;padding:3px 9px;border-radius:12px;background:hsla(' + hue + ',90%,60%,.92);color:#fff;font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fmtTime(first) + '</span></div>' +
             '<div style="padding:9px 11px;color:#fff;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + r.name + ' ' + moodEmoji(r.mood) + '</div>' +
@@ -420,11 +420,21 @@ function openTimelinePanel() {
     }
 
     var wheelLock = false;
+    var focusTimer = null;
     function renderFocus() {
         var r = records[idx];
         focus.innerHTML = focusHtml(r, sub);
-        focus.classList.remove('tl-fade'); void focus.offsetWidth; focus.classList.add('tl-fade');
         bindFocus();
+        // 串行编排：先让侧卡滑入（布局已在 layout() 触发），延迟片刻后居中卡再展开淡入，避免并发局促
+        if (focusTimer) clearTimeout(focusTimer);
+        focus.classList.remove('tl-fade');
+        focus.style.animation = 'none';
+        focus.style.opacity = 0;
+        focusTimer = setTimeout(function () {
+            focus.style.animation = '';
+            focus.style.opacity = '';
+            focus.classList.remove('tl-fade'); void focus.offsetWidth; focus.classList.add('tl-fade');
+        }, 560);
     }
 
     // 局部更新当前记录内的第 s 张（淡入淡出，不重建整卡）
@@ -544,8 +554,8 @@ styleEl.textContent =
     '.gm-spin{width:18px;height:18px;border:2px solid #d5dde5;border-top-color:#1e88e5;border-radius:50%;animation:gmrot .8s linear infinite;}' +
     '@keyframes gmrot{to{transform:rotate(360deg);}}' +
     '.gm-cap{position:absolute;display:-webkit-box;width:max-content;max-width:128px;padding:2px 8px;background:rgba(0,0,0,.68);color:#fff;border-radius:6px;font-size:11px;line-height:1.4;text-align:center;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;word-break:normal;box-shadow:0 2px 8px rgba(0,0,0,.3);}' +
-'@keyframes tlFade{from{opacity:.25;transform:translate(-50%,-50%) scale(.94);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}' +
-'.tl-fade{animation:tlFade .9s cubic-bezier(.25,.8,.3,1);}';
+'@keyframes tlFade{from{opacity:.15;transform:translate(-50%,-50%) scale(.92);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}' +
+'.tl-fade{animation:tlFade 1.15s cubic-bezier(.22,.8,.28,1) both;}';
 document.head.appendChild(styleEl);
 
 /* ===== 精致小弹框（非全屏）：翻页 / 改签名 / 下载 / 删除 ===== */
