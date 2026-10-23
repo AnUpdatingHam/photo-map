@@ -13,6 +13,10 @@ var infoWindow = new AMap.InfoWindow({ offset: new AMap.Pixel(0, -20) });
 var bounds = [];
 var groups = {};
 var timeline = [];   // 全量照片（供时间轨迹与时光轴面板）
+// 缩放收拢：默认开启，地图缩小到阈值以下时照片收成大头钉
+var imgHideOnZoom = true;
+var compactMode = false;
+var ZOOM_PIN_THRESHOLD = 13;
 
 function parseTime(p) {
     var s = p.start_time || p.data_time || '';
@@ -39,7 +43,20 @@ function ensureGroup(lng, lat) {
     return groups[key];
 }
 
+// 缩小视图时的大头钉（针尖正好落在经纬度点上）
+function renderPin(g) {
+    var n = g.photos.length;
+    g.marker.setContent(
+        '<div style="position:relative;display:flex;flex-direction:column;align-items:center;">' +
+        '<div style="width:30px;height:30px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);background:linear-gradient(135deg,#7c5cff,#e08a9b);border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;">' +
+        '<span style="transform:rotate(45deg);color:#fff;font-size:12px;font-weight:700;line-height:1;">' + (n > 1 ? n : '✦') + '</span></div>' +
+        '<div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:8px solid #7c5cff;margin-top:-1px;"></div>' +
+        '</div>'
+    );
+}
+
 function renderChip(g) {
+    if (compactMode) { renderPin(g); return; }
     var p = g.photos[g.idx];
     var src = p.thumbnail || p.url;
     var n = g.photos.length;
@@ -47,13 +64,23 @@ function renderChip(g) {
         ? '<span style="position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 4px;background:#1e88e5;color:#fff;border-radius:9px;font-size:11px;line-height:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.3);">' + n + '</span>' : '';
     var cap = photoCaption(p);
     var capHtml = cap ? '<div style="max-width:120px;margin-top:3px;padding:2px 6px;background:rgba(0,0,0,.65);color:#fff;border-radius:4px;font-size:11px;line-height:1.4;">' + cap + '</div>' : '';
+    // 图片/角标/签名包在相对容器里，针尖固定在最底部并落在经纬度点（anchor bottom-center）
     g.marker.setContent(
-        '<div style="position:relative;display:flex;flex-direction:column;align-items:center;">' +
-        '<div style="position:relative;width:52px;height:52px;border-radius:8px;overflow:hidden;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);background:#eef1f4;">' +
+        '<div style="display:flex;flex-direction:column;align-items:center;">' +
+        '<div style="position:relative;">' +
+        '<div style="position:relative;width:52px;height:52px;border-radius:10px;overflow:hidden;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);background:#eef1f4;">' +
         '<div class="gm-spin" style="position:absolute;left:50%;top:50%;margin:-9px 0 0 -9px;"></div>' +
         '<img src="' + src + '" style="width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .35s;" onload="this.style.opacity=1;var s=this.parentNode.querySelector(\'.gm-spin\');if(s)s.remove()" onerror="var s=this.parentNode.querySelector(\'.gm-spin\');if(s)s.remove()">' +
-        '</div>' + badge + capHtml + '</div>'
+        '</div>' + badge + capHtml +
+        '</div>' +
+        '<div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:9px solid #fff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3));margin-top:-1px;"></div>' +
+        '</div>'
     );
+}
+
+function applyZoomStyle() {
+    compactMode = imgHideOnZoom && map.getZoom() < ZOOM_PIN_THRESHOLD;
+    Object.keys(groups).forEach(function (k) { renderChip(groups[k]); });
 }
 
 function startCarousel(g) {
@@ -91,6 +118,8 @@ function addPhotoToMap(photo) {
 if (bounds.length) {
     map.setFitView(null, false, [60, 60, 60, 60]);
 }
+map.on('zoomchange', applyZoomStyle);
+applyZoomStyle();
 
 /* ===== 彩色时间轨迹链（可开关，停留越久节点越亮） ===== */
 var trailLayers = [];
@@ -102,40 +131,84 @@ function sortedTimeline() {
         .sort(function (a, b) { return parseTime(a) - parseTime(b); });
 }
 
+/* 流光：沿轨迹循环流动的光点，示意先后顺序与走向 */
+var flowMarker = null, flowTimer = null, flowSegs = [];
+function stopFlow() {
+    if (flowTimer) { clearInterval(flowTimer); flowTimer = null; }
+    if (flowMarker) { flowMarker.setMap(null); flowMarker = null; }
+}
+function startFlow() {
+    stopFlow();
+    if (!trailOn || !flowSegs.length) return;
+    var total = flowSegs.reduce(function (s, x) { return s + x.len; }, 0);
+    var head = 0, speed = total / 4200;   // 约 4.2s 循环一圈
+    flowMarker = new AMap.Marker({
+        anchor: 'center', zIndex: 70,
+        content: '<div style="width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 0 14px 5px rgba(255,255,255,.85);"></div>',
+        map: map
+    });
+    flowTimer = setInterval(function () {
+        head += speed * 0.04;
+        if (head > total) head = 0;
+        var acc = 0, pos = null;
+        for (var k = 0; k < flowSegs.length; k++) {
+            var s = flowSegs[k];
+            if (head <= acc + s.len) {
+                var f = s.len ? (head - acc) / s.len : 0;
+                pos = [s.a[0] + (s.b[0] - s.a[0]) * f, s.a[1] + (s.b[1] - s.a[1]) * f];
+                break;
+            }
+            acc += s.len;
+        }
+        if (!pos) pos = flowSegs[0].a;
+        flowMarker.setPosition(pos);
+    }, 40);
+}
+
 function buildTrajectory() {
+    stopFlow();
     trailLayers.forEach(function (l) { l.setMap(null); });
     trailLayers = [];
     var pts = sortedTimeline();
     if (pts.length < 2) return;
     var n = pts.length;
+    flowSegs = [];
     for (var i = 0; i < n - 1; i++) {
         var hue = Math.round(i / (n - 1) * 300);
-        var color = 'hsl(' + hue + ',95%,62%)';
-        var path = [[+pts[i].lng, +pts[i].lat], [+pts[i + 1].lng, +pts[i + 1].lat]];
-        // 发光底轨
+        var col = 'hsl(' + hue + ',80%,68%)';
+        var a = [+pts[i].lng, +pts[i].lat], b = [+pts[i + 1].lng, +pts[i + 1].lat];
+        flowSegs.push({ a: a, b: b, len: AMap.GeometryUtil.distance(a, b) });
+        // 柔和发光底轨
         trailLayers.push(new AMap.Polyline({
-            path: path, strokeColor: color, strokeWeight: 11, strokeOpacity: 0.16,
-            lineJoin: 'round', lineCap: 'round', showDir: true, map: trailOn ? map : null
-        }));
-        // 主彩线
-        trailLayers.push(new AMap.Polyline({
-            path: path, strokeColor: color, strokeWeight: 3.5, strokeOpacity: 0.95,
+            path: [a, b], strokeColor: col, strokeWeight: 10, strokeOpacity: 0.18,
             lineJoin: 'round', lineCap: 'round', map: trailOn ? map : null
         }));
+        // 虚线主轨（留白节奏，显得轻盈）
+        trailLayers.push(new AMap.Polyline({
+            path: [a, b], strokeColor: col, strokeWeight: 2.8, strokeOpacity: 0.95,
+            lineJoin: 'round', lineCap: 'round', strokeDashArray: [1, 10],
+            map: trailOn ? map : null
+        }));
     }
-    // 节点光晕：停留越久越亮越大
+    // 序号节点（悬浮在点上方，不压住照片）；停留越久外圈光晕越柔越亮
     pts.forEach(function (p, i) {
-        var m = dwellMin(p);
-        var t = Math.min(1, m / 120);
         var hue = Math.round(i / (n - 1) * 300);
-        trailLayers.push(new AMap.CircleMarker({
-            position: [+p.lng, +p.lat],
-            radius: 12 + t * 24,
-            fillColor: 'hsl(' + hue + ',95%,66%)',
-            fillOpacity: 0.16 + t * 0.5,
-            strokeWeight: 0, zIndex: 50, map: trailOn ? map : null
+        var t = Math.min(1, dwellMin(p) / 120);
+        if (t > 0) {
+            trailLayers.push(new AMap.CircleMarker({
+                position: [+p.lng, +p.lat], radius: 14 + t * 16,
+                fillColor: 'hsla(' + hue + ',90%,70%,.12)', strokeWeight: 0,
+                map: trailOn ? map : null
+            }));
+        }
+        trailLayers.push(new AMap.Marker({
+            position: [+p.lng, +p.lat], anchor: 'center', zIndex: 60,
+            offset: new AMap.Pixel(0, -30),
+            content: '<div style="width:22px;height:22px;border-radius:50%;background:hsl(' + hue + ',85%,62%);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.35);">' + (i + 1) + '</div>',
+            map: trailOn ? map : null
         }));
     });
+    if (trailOn) startFlow();
 }
 
 function scheduleTrail() {
@@ -146,6 +219,7 @@ function scheduleTrail() {
 function toggleTrail() {
     trailOn = !trailOn;
     trailLayers.forEach(function (l) { l.setMap(trailOn ? map : null); });
+    if (trailOn) startFlow(); else stopFlow();
     var btn = document.getElementById('trailBtn');
     if (btn) {
         btn.style.background = trailOn ? '#7c5cff' : '#fff';
@@ -163,6 +237,22 @@ function toggleTrail() {
     btn.onclick = toggleTrail;
     document.getElementById('map').appendChild(btn);
     scheduleTrail();
+})();
+
+// 缩小时自动收成大头钉（默认开）；关闭后任意缩放都保留照片图
+(function () {
+    var btn = document.createElement('div');
+    btn.id = 'pinBtn';
+    btn.innerText = '📌 缩小收图钉 开';
+    btn.style.cssText = 'position:absolute;right:14px;bottom:174px;z-index:200;padding:8px 12px;background:#7c5cff;color:#fff;border-radius:20px;box-shadow:0 2px 10px rgba(124,92,255,.45);cursor:pointer;font-size:13px;';
+    btn.onclick = function () {
+        imgHideOnZoom = !imgHideOnZoom;
+        btn.style.background = imgHideOnZoom ? '#7c5cff' : '#fff';
+        btn.style.color = imgHideOnZoom ? '#fff' : '#666';
+        btn.innerText = '📌 缩小收图钉 ' + (imgHideOnZoom ? '开' : '关');
+        applyZoomStyle();
+    };
+    document.getElementById('map').appendChild(btn);
 })();
 
 /* ===== 无底图「时光长河」面板：按时间排序，左右滑动的华丽卡片集 ===== */
