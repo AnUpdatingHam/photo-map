@@ -125,7 +125,7 @@ class UploadController extends Controller
         $caption = addslashes(trim($_POST['caption'] ?? ''));        // 共用文案 → f_event
         $perCaption = addslashes(trim($_POST['per-caption'] ?? '')); // 单张文案 → f_caption
         $batch = addslashes(trim($_POST['batch'] ?? ''));             // 一次多选提交的批次号
-        $mood = addslashes(trim($_POST['mood'] ?? ''));                // 心情 emoji
+        $mood = addslashes(trim($_POST['mood'] ?? ''));                // 心情 key（emoji 在前端映射）
         // 起止时间：datetime-local 形如 2026-10-23T18:30，统一存为 YYYY-MM-DD HH:mm
         $startTime = addslashes(str_replace('T', ' ', trim($_POST['start-time'] ?? '')));
         $endTime = addslashes(str_replace('T', ' ', trim($_POST['end-time'] ?? '')));
