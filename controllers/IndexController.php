@@ -34,6 +34,9 @@ class IndexController extends Controller
                     if($data[$v]['batch']===null){
                         $data[$v]['batch']='';
                     }
+                    if($data[$v]['mood']===null){
+                        $data[$v]['mood']='';
+                    }
                 }
                 $files = [
                     "rows" => $data,
@@ -132,6 +135,28 @@ class IndexController extends Controller
         $status = $file->addCaption($fid, $content);
         if ($status) {
             return $this->response('签名已保存', 200);
+        } else {
+            return $this->response('保存失败或无变化', 400);
+        }
+    }
+
+    // 编辑一次提交：共用事件文案 / 起止时间 / 心情（整组 fids）
+    public function editrecord()
+    {
+        if (empty($_SESSION['id'])) return $this->response('未登录', 401);
+        $data = $this->request();
+        $fids = $data['fids'] ?? [];
+        if (!is_array($fids)) $fids = [$fids];
+        $fids = array_filter(array_map('intval', $fids));
+        if (!$fids) return $this->response('参数错误', 400);
+        $event = trim((string)($data['event'] ?? ''));
+        $start = trim((string)($data['start_time'] ?? ''));
+        $end = trim((string)($data['end_time'] ?? ''));
+        $mood = trim((string)($data['mood'] ?? ''));
+        $file = new File;
+        $status = $file->editRecord($fids, $event, $start, $end, $mood);
+        if ($status) {
+            return $this->response('已保存', 200);
         } else {
             return $this->response('保存失败或无变化', 400);
         }

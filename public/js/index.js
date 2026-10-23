@@ -60,11 +60,12 @@ function renderChip(g) {
     var p = g.photos[g.idx];
     var src = p.thumbnail || p.url;
     var cap = photoCaption(p);
-    var capHtml = cap ? '<div style="max-width:120px;margin-top:3px;padding:2px 6px;background:rgba(0,0,0,.65);color:#fff;border-radius:4px;font-size:11px;line-height:1.4;">' + cap + '</div>' : '';
+    // 签名绝对定位在图片下方居中，两行省略号，不把图片挤偏
+    var capHtml = cap ? '<div class="gm-cap" style="left:50%;top:58px;transform:translateX(-50%);width:128px;">' + cap + '</div>' : '';
     // 图片/角标/签名包在相对容器里，针尖固定在最底部并落在经纬度点（anchor bottom-center）
     g.marker.setContent(
         '<div style="display:flex;flex-direction:column;align-items:center;">' +
-        '<div style="position:relative;">' +
+        '<div style="position:relative;width:52px;">' +
         '<div style="position:relative;width:52px;height:52px;border-radius:10px;overflow:hidden;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);background:#eef1f4;">' +
         '<div class="gm-spin" style="position:absolute;left:50%;top:50%;margin:-9px 0 0 -9px;"></div>' +
         '<img src="' + src + '" style="width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .35s;" onload="this.style.opacity=1;var s=this.parentNode.querySelector(\'.gm-spin\');if(s)s.remove()" onerror="var s=this.parentNode.querySelector(\'.gm-spin\');if(s)s.remove()">' +
@@ -235,7 +236,7 @@ function buildTrajectory() {
         trailLayers.push(new AMap.Marker({
             position: [+g.lng, +g.lat], anchor: 'center', zIndex: 60,
             offset: new AMap.Pixel(0, -32),
-            content: '<div style="width:24px;height:24px;border-radius:50%;background:hsl(' + hue + ',85%,60%);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 0 10px hsla(' + hue + ',90%,65%,.8);">' + (i + 1) + '</div>',
+            content: '<div style="width:24px;height:24px;border-radius:50%;background:hsl(' + hue + ',85%,60%);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px hsla(' + hue + ',90%,65%,.9),0 2px 6px rgba(0,0,0,.35);">' + (i + 1) + '</div>',
             map: trailOn ? map : null
         }));
     });
@@ -303,7 +304,7 @@ function buildRecords() {
         if (!bag[key]) {
             bag[key] = {
                 lng: +p.lng, lat: +p.lat, photos: [],
-                event: p.event || '', address: p.address || '',
+                event: p.event || '', address: p.address || '', mood: p.mood || '',
                 name: p.name, avatar: p.avatar,
                 start_time: p.start_time, end_time: p.end_time, _t: parseTime(p) || Infinity
             };
@@ -313,99 +314,122 @@ function buildRecords() {
         var pt = parseTime(p);
         if (pt && pt < r._t) r._t = pt;
         if (!r.event && p.event) r.event = p.event;
+        if (!r.mood && p.mood) r.mood = p.mood;
         if (!r.address && p.address) r.address = p.address;
     });
     return Object.keys(bag).map(function (k) { return bag[k]; })
         .sort(function (a, b) { return a._t - b._t; });
 }
 
-var tlMap = null;
 function openTimelinePanel() {
     var records = buildRecords();
     var old = document.getElementById('tlPanel');
-    if (old) { if (tlMap) { tlMap.destroy(); tlMap = null; } old.remove(); }
+    if (old) old.remove();
     var el = document.createElement('div');
     el.id = 'tlPanel';
-    el.style.cssText = 'position:fixed;inset:0;z-index:3000;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:linear-gradient(160deg,rgba(22,18,58,.92) 0%,rgba(51,37,107,.9) 30%,rgba(109,74,158,.88) 56%,rgba(217,138,160,.9) 80%,rgba(243,199,149,.92) 100%);';
+    // 复用全局唯一的主地图：面板只做半透渐变遮罩，不再新建第二幅地图
+    el.style.cssText = 'position:fixed;inset:0;z-index:3000;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:linear-gradient(160deg,rgba(22,18,58,.86) 0%,rgba(51,37,107,.82) 30%,rgba(109,74,158,.78) 56%,rgba(217,138,160,.74) 80%,rgba(243,199,149,.8) 100%);';
 
-    var cardsHtml = records.map(function (r, i) {
-        var hue = Math.round(i / Math.max(1, records.length - 1) * 300);
+    // 两侧迷你卡（可点击跳转）
+    var minisHtml = records.map(function (r, i) {
         var first = r.photos[0];
-        return '<div class="tl-card" data-i="' + i + '" style="position:absolute;left:50%;top:50%;width:360px;margin:-260px 0 0 -180px;border-radius:26px;overflow:hidden;background:rgba(255,255,255,.14);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.3);box-shadow:0 28px 70px rgba(0,0,0,.45);transition:transform .55s cubic-bezier(.22,.9,.28,1),opacity .4s;will-change:transform,opacity;">' +
-            '<div class="tl-media" style="height:60vh;min-height:320px;position:relative;background:#000;">' +
-            '<img class="tl-img" src="' + (first.nondes || first.thumbnail || first.url) + '" style="width:100%;height:100%;object-fit:cover;display:block;">' +
-            '<div style="position:absolute;inset:0;background:linear-gradient(180deg,hsla(' + hue + ',80%,60%,.28),transparent 42%,rgba(0,0,0,.5));"></div>' +
-            '<span class="tl-time" style="position:absolute;left:14px;top:14px;padding:5px 13px;border-radius:15px;background:hsla(' + hue + ',90%,60%,.9);color:#fff;font-size:12px;box-shadow:0 2px 10px rgba(0,0,0,.3);">' + fmtTime(first) + '</span>' +
-            '<button class="tl-sub" data-sub="-1" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:50%;border:none;background:rgba(0,0,0,.45);color:#fff;font-size:22px;cursor:pointer;opacity:0;transition:.25s;">‹</button>' +
-            '<button class="tl-sub" data-sub="1" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:50%;border:none;background:rgba(0,0,0,.45);color:#fff;font-size:22px;cursor:pointer;opacity:0;transition:.25s;">›</button>' +
-            '<span class="tl-count" style="position:absolute;right:12px;bottom:12px;padding:3px 10px;border-radius:12px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;opacity:0;transition:.25s;"></span>' +
-            '</div>' +
-            '<div class="tl-info" style="padding:16px 18px 20px;color:#fff;">' +
-                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><img src="' + r.avatar + '" style="width:28px;height:28px;border-radius:50%;object-fit:cover;"><span style="font-size:14px;font-weight:600;">' + r.name + '</span></div>' +
-                '<div class="tl-cap" style="font-size:15px;line-height:1.6;min-height:48px;"></div>' +
-                '<div style="margin-top:8px;font-size:12px;color:rgba(255,255,255,.8);">📍 ' + (r.address || '') + '</div>' +
-            '</div></div>';
+        var hue = Math.round(i / Math.max(1, records.length - 1) * 300);
+        return '<div class="tl-mini" data-i="' + i + '" style="position:absolute;left:50%;top:50%;width:150px;height:190px;margin:-95px 0 0 -75px;border-radius:18px;overflow:hidden;cursor:pointer;background:rgba(255,255,255,.12);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.28);box-shadow:0 14px 40px rgba(0,0,0,.4);transition:transform .55s cubic-bezier(.22,.9,.28,1),opacity .4s,box-shadow .3s;">' +
+            '<div style="height:118px;position:relative;"><img src="' + (first.nondes || first.thumbnail || first.url) + '" style="width:100%;height:100%;object-fit:cover;display:block;">' +
+            '<span style="position:absolute;left:8px;top:8px;padding:3px 9px;border-radius:12px;background:hsla(' + hue + ',90%,60%,.92);color:#fff;font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fmtTime(first) + '</span></div>' +
+            '<div style="padding:9px 11px;color:#fff;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + r.name + ' ' + moodEmoji(r.mood) + '</div>' +
+            '<div style="font-size:11px;opacity:.75;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (r.event || r.address || '') + '</div></div>' +
+            '</div>';
     }).join('');
 
     el.innerHTML =
-        '<div id="tlMap" style="position:absolute;inset:0;opacity:.1;filter:saturate(.6) brightness(.9);pointer-events:none;"></div>' +
-        '<div style="position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.5) 1px,transparent 1px);background-size:34px 34px;opacity:.14;pointer-events:none;"></div>' +
-        '<div style="position:relative;padding:42px 30px 0;text-align:center;color:#fff;z-index:5;">' +
+        '<div style="position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.5) 1px,transparent 1px);background-size:34px 34px;opacity:.1;pointer-events:none;"></div>' +
+        '<div style="position:relative;padding:38px 30px 0;text-align:center;color:#fff;z-index:5;">' +
             '<div style="font-size:28px;font-weight:700;letter-spacing:3px;text-shadow:0 2px 20px rgba(255,255,255,.45);">✦ 时光长河 ✦</div>' +
             '<div style="font-size:13px;opacity:.82;margin-top:6px;">首尾相连 · 按提交回到每一段闪光 · 共 ' + records.length + ' 次回忆</div>' +
         '</div>' +
         '<button id="tlClose" style="position:absolute;right:22px;top:22px;width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.15);color:#fff;font-size:18px;cursor:pointer;z-index:30;">×</button>' +
-        '<div id="tlStage" style="position:absolute;inset:0;z-index:10;"></div>' +
-        '<button id="tlPrev" style="position:absolute;left:26px;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.18);color:#fff;font-size:24px;cursor:pointer;z-index:25;backdrop-filter:blur(6px);">‹</button>' +
-        '<button id="tlNext" style="position:absolute;right:26px;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.18);color:#fff;font-size:24px;cursor:pointer;z-index:25;backdrop-filter:blur(6px);">›</button>' +
-        '<div id="tlDots" style="position:absolute;bottom:30px;left:0;right:0;display:flex;gap:8px;justify-content:center;z-index:25;"></div>';
-    el.querySelector('#tlStage').innerHTML = cardsHtml;
+        '<div id="tlMinis" style="position:absolute;inset:0;z-index:8;">' + minisHtml + '</div>' +
+        // 中心大卡：左图（大图+缩略条）右信息
+        '<div id="tlFocus" style="position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);z-index:20;width:min(820px,88vw);height:470px;border-radius:26px;overflow:hidden;display:flex;background:rgba(28,22,60,.66);backdrop-filter:blur(22px);border:1px solid rgba(255,255,255,.32);box-shadow:0 30px 90px rgba(0,0,0,.55);"></div>' +
+        '<button id="tlPrev" style="position:absolute;left:22px;top:54%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.16);color:#fff;font-size:24px;cursor:pointer;z-index:25;backdrop-filter:blur(6px);">‹</button>' +
+        '<button id="tlNext" style="position:absolute;right:22px;top:54%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.16);color:#fff;font-size:24px;cursor:pointer;z-index:25;backdrop-filter:blur(6px);">›</button>' +
+        '<div id="tlDots" style="position:absolute;bottom:28px;left:0;right:0;display:flex;gap:8px;justify-content:center;z-index:25;"></div>';
     document.body.appendChild(el);
 
     var idx = 0, sub = 0, count = records.length;
-    var cards = Array.prototype.slice.call(el.querySelectorAll('.tl-card'));
+    var minis = Array.prototype.slice.call(el.querySelectorAll('.tl-mini'));
     var dots = el.querySelector('#tlDots');
-
-    // 半透背景地图 + 点位
-    if (window.AMap && records.length) {
-        try {
-            tlMap = new AMap.Map(el.querySelector('#tlMap'), { zoom: 12, center: [records[0].lng, records[0].lat], viewMode: '2D' });
-            records.forEach(function (r) {
-                new AMap.Marker({
-                    position: [r.lng, r.lat], map: tlMap, anchor: 'center',
-                    content: '<div style="width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 0 10px 3px rgba(255,255,255,.8);"></div>'
-                });
-            });
-        } catch (e) { tlMap = null; }
-    }
+    var focus = el.querySelector('#tlFocus');
 
     function wrap(d) { d = ((d % count) + count) % count; if (d > count / 2) d -= count; return d; }
 
-    function renderCenter() {
-        var r = records[idx];
-        var c = cards[idx];
-        var p = r.photos[sub];
-        c.querySelector('.tl-img').src = p.nondes || p.thumbnail || p.url;
-        c.querySelector('.tl-time').innerText = fmtTime(p);
+    function focusHtml(r, s) {
+        var p = r.photos[s];
+        var big = p.nondes || p.thumbnail || p.url;
+        var thumbs = r.photos.map(function (ph, k) {
+            var t = ph.nondes || ph.thumbnail || ph.url;
+            var on = k === s;
+            return '<div class="tl-thumb" data-sub="' + k + '" style="flex:none;width:62px;height:62px;border-radius:12px;overflow:hidden;cursor:pointer;border:2px solid ' + (on ? '#fff' : 'transparent') + ';box-shadow:' + (on ? '0 0 0 2px #7c5cff' : 'none') + ';opacity:' + (on ? 1 : .6) + ';"><img src="' + t + '" style="width:100%;height:100%;object-fit:cover;display:block;"></div>';
+        }).join('');
         var cap = photoCaption(p);
-        c.querySelector('.tl-cap').innerHTML = cap ? '“' + cap + '”' : '<span style="color:rgba(255,255,255,.6);">一段尚未写下的回忆</span>';
-        var multi = r.photos.length > 1;
-        c.querySelector('.tl-count').innerText = multi ? (sub + 1) + ' / ' + r.photos.length : '';
-        c.querySelectorAll('.tl-sub,.tl-count').forEach(function (b) { b.style.opacity = multi ? 1 : 0; });
+        return '<div style="display:flex;width:100%;height:100%;">' +
+          // 左：图片区
+          '<div style="width:56%;padding:18px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;">' +
+            '<div style="position:relative;flex:1;border-radius:18px;overflow:hidden;background:#000;">' +
+              '<img id="tlBig" src="' + big + '" style="width:100%;height:100%;object-fit:cover;display:block;">' +
+              '<button class="tl-bignav" data-d="-1" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:none;background:rgba(0,0,0,.35);color:#fff;font-size:20px;cursor:pointer;opacity:0;transition:.25s;">‹</button>' +
+              '<button class="tl-bignav" data-d="1" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:none;background:rgba(0,0,0,.35);color:#fff;font-size:20px;cursor:pointer;opacity:0;transition:.25s;">›</button>' +
+              (r.photos.length > 1 ? '<span id="tlCnt" style="position:absolute;right:12px;bottom:12px;padding:3px 11px;border-radius:12px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;">' + (s + 1) + ' / ' + r.photos.length + '</span>' : '') +
+            '</div>' +
+            (r.photos.length > 1 ? '<div id="tlThumbs" style="display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:thin;">' + thumbs + '</div>' : '') +
+          '</div>' +
+          // 右：信息区
+          '<div style="flex:1;padding:26px 22px;color:#fff;display:flex;flex-direction:column;gap:12px;overflow:hidden;">' +
+            '<div style="display:flex;align-items:center;gap:10px;"><span style="padding:5px 13px;border-radius:15px;background:rgba(124,92,255,.55);font-size:12px;">🕒 ' + fmtTime(p) + '</span>' + (p.end_time ? '<span style="font-size:12px;opacity:.8;">→ ' + p.end_time + '</span>' : '') + '</div>' +
+            '<div style="display:flex;align-items:center;gap:10px;"><img src="' + r.avatar + '" style="width:34px;height:34px;border-radius:50%;object-fit:cover;"><span style="font-size:15px;font-weight:600;">' + r.name + '</span>' + (r.mood ? '<span style="font-size:26px;margin-left:2px;" title="心情">' + moodEmoji(r.mood) + '</span>' : '') + '</div>' +
+            '<div style="font-size:16px;line-height:1.7;max-height:150px;overflow:auto;white-space:pre-wrap;word-break:break-word;">' + (cap || '<span style="opacity:.6;">一段尚未写下的回忆</span>') + '</div>' +
+            '<div style="margin-top:auto;font-size:12.5px;color:rgba(255,255,255,.82);line-height:1.6;">📍 ' + (r.address || '') + '</div>' +
+          '</div>' +
+        '</div>';
+    }
+
+    function renderFocus() {
+        var r = records[idx];
+        focus.innerHTML = focusHtml(r, sub);
+        // 大图悬停显小箭头
+        focus.querySelectorAll('.tl-bignav').forEach(function (b) {
+            b.onmouseenter = function () { b.style.opacity = 1; };
+            b.onmouseleave = function () { b.style.opacity = 0; };
+            b.onclick = function () { focusSub(sub + parseInt(b.dataset.d, 10)); };
+        });
+        focus.querySelectorAll('.tl-thumb').forEach(function (t) {
+            t.onclick = function () { focusSub(parseInt(t.dataset.sub, 10)); };
+        });
+        // 缩略条滚轮左右切换
+        var strip = focus.querySelector('#tlThumbs');
+        if (strip) strip.addEventListener('wheel', function (e) {
+            e.preventDefault(); strip.scrollLeft += (e.deltaY || e.deltaX) * 2;
+        }, { passive: false });
+    }
+
+    function focusSub(s) {
+        sub = ((s % records[idx].photos.length) + records[idx].photos.length) % records[idx].photos.length;
+        renderFocus();
     }
 
     function layout() {
-        cards.forEach(function (c, k) {
+        minis.forEach(function (c, k) {
             var d = wrap(k - idx);
             var ad = Math.abs(d);
-            var scale = ad === 0 ? 1.18 : ad === 1 ? .82 : ad === 2 ? .62 : .45;
-            var rise = ad === 0 ? -30 : ad === 1 ? 52 : ad === 2 ? 104 : 140;
-            var x = d * 320;
+            var show = ad === 1 || ad === 2;
+            var x = d * 250;
+            var scale = ad === 1 ? .86 : .66;
+            var rise = ad === 1 ? 40 : 110;
             c.style.transform = 'translate(' + x + 'px,' + rise + 'px) scale(' + scale + ')';
-            c.style.opacity = ad > 2 ? 0 : (ad === 0 ? 1 : .8);
-            c.style.zIndex = 100 - ad;
-            c.style.pointerEvents = ad === 0 ? 'auto' : 'none';
-            c.querySelectorAll('.tl-sub,.tl-count').forEach(function (b) { b.style.opacity = ad === 0 && records[k].photos.length > 1 ? 1 : 0; });
+            c.style.opacity = show ? (ad === 1 ? .95 : .6) : 0;
+            c.style.zIndex = 10 - ad;
+            c.style.pointerEvents = show ? 'auto' : 'none';
         });
         dots.querySelectorAll('span').forEach(function (s, k) {
             s.style.background = k === idx ? '#fff' : 'rgba(255,255,255,.35)';
@@ -417,54 +441,26 @@ function openTimelinePanel() {
         idx = ((i % count) + count) % count;
         sub = 0;
         layout();
-        renderCenter();
-        if (tlMap) tlMap.panTo([records[idx].lng, records[idx].lat], { duration: 600 });
+        renderFocus();
+        // 复用主地图平滑平移到该记录点位
+        if (window.map) map.panTo([records[idx].lng, records[idx].lat], { duration: 600 });
     }
 
     for (var d = 0; d < count; d++) {
         var s = document.createElement('span');
-        s.style.cssText = 'height:8px;width:8px;border-radius:50%;background:rgba(255,255,255,.35);transition:.3s;display:inline-block;';
+        s.style.cssText = 'height:8px;width:8px;border-radius:50%;background:rgba(255,255,255,.35);transition:.3s;display:inline-block;cursor:pointer;';
+        s.onclick = function (k) { return function () { go(k); }; }(d);
         dots.appendChild(s);
     }
     el.querySelector('#tlPrev').onclick = function () { go(idx - 1); };
     el.querySelector('#tlNext').onclick = function () { go(idx + 1); };
-    el.querySelector('#tlClose').onclick = function () { if (tlMap) { tlMap.destroy(); tlMap = null; } el.remove(); };
+    el.querySelector('#tlClose').onclick = function () { el.remove(); };
 
-    // 卡内切换同一次提交的多张图
-    el.querySelector('#tlStage').addEventListener('click', function (e) {
-        var b = e.target.closest('.tl-sub');
-        if (!b) return;
-        var r = records[idx];
-        sub = (sub + parseInt(b.dataset.sub, 10) + r.photos.length) % r.photos.length;
-        renderCenter();
+    // 两侧卡片可点击直接跳转
+    minis.forEach(function (c, k) {
+        c.onclick = function () { go(k); };
     });
 
-    // 拖拽/触摸滑动（首尾循环）
-    var startX = 0, dragging = false, base = 0;
-    var stage = el.querySelector('#tlStage');
-    stage.addEventListener('pointerdown', function (e) {
-        if (e.target.closest('.tl-sub')) return;
-        dragging = true; startX = e.clientX; base = idx;
-        cards.forEach(function (c) { c.style.transition = 'none'; });
-    });
-    window.addEventListener('pointermove', function (e) {
-        if (!dragging) return;
-        var dx = e.clientX - startX;
-        cards.forEach(function (c, k) {
-            var d = wrap(k - base);
-            var ad = Math.abs(d);
-            var scale = ad === 0 ? 1.18 : ad === 1 ? .82 : ad === 2 ? .62 : .45;
-            var rise = ad === 0 ? -30 : ad === 1 ? 52 : ad === 2 ? 104 : 140;
-            c.style.transform = 'translate(' + (d * 320 + dx) + 'px,' + rise + 'px) scale(' + scale + ')';
-        });
-    });
-    window.addEventListener('pointerup', function (e) {
-        if (!dragging) return;
-        dragging = false;
-        cards.forEach(function (c) { c.style.transition = ''; });
-        var dx = e.clientX - startX;
-        if (dx < -50) go(base + 1); else if (dx > 50) go(base - 1); else go(base);
-    });
     go(0);
 }
 
@@ -481,7 +477,8 @@ function openTimelinePanel() {
 var styleEl = document.createElement('style');
 styleEl.textContent =
     '.gm-spin{width:18px;height:18px;border:2px solid #d5dde5;border-top-color:#1e88e5;border-radius:50%;animation:gmrot .8s linear infinite;}' +
-    '@keyframes gmrot{to{transform:rotate(360deg);}}';
+    '@keyframes gmrot{to{transform:rotate(360deg);}}' +
+    '.gm-cap{position:absolute;padding:2px 7px;background:rgba(0,0,0,.68);color:#fff;border-radius:6px;font-size:11px;line-height:1.4;text-align:center;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all;box-shadow:0 2px 8px rgba(0,0,0,.3);}';
 document.head.appendChild(styleEl);
 
 /* ===== 精致小弹框（非全屏）：翻页 / 改签名 / 下载 / 删除 ===== */
@@ -492,6 +489,9 @@ function photoCardHtml(g, i) {
     var src = p.thumbnail || p.url;
     var multi = g.photos.length > 1;
     var cap = photoCaption(p);
+    var ev = g.photos.map(function (x) { return x.event; }).filter(Boolean)[0] || '';
+    var moodKey = g.photos.map(function (x) { return x.mood; }).filter(Boolean)[0] || '';
+    var mood = moodEmoji(moodKey);
     var arrows = multi
         ? '<button onclick="cardNav(-1)" style="position:absolute;left:6px;top:72px;width:30px;height:30px;border:none;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:20px;line-height:30px;cursor:pointer;">‹</button>' +
           '<button onclick="cardNav(1)" style="position:absolute;right:6px;top:72px;width:30px;height:30px;border:none;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:20px;line-height:30px;cursor:pointer;">›</button>'
@@ -499,9 +499,18 @@ function photoCardHtml(g, i) {
     var counter = multi
         ? '<span style="position:absolute;right:8px;top:8px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:2px 9px;border-radius:10px;">' + (i + 1) + ' / ' + g.photos.length + '</span>'
         : '';
+    var timeLine = (p.start_time || p.end_time)
+        ? '<div style="display:flex;align-items:center;gap:5px;font-size:12px;color:#8a8f99;line-height:1.5;margin-top:6px;"><span>🕒</span><span>' + (p.start_time || '未定') + (p.end_time ? ' → ' + p.end_time : '') + '</span></div>'
+        : '';
     var capLine = cap
-        ? '<div style="font-size:13px;color:#333;line-height:1.5;margin:8px 0 4px;">“' + cap + '”</div>'
-        : '<div style="font-size:12px;color:#bbb;margin:8px 0 4px;">还没写签名，点下面“签名”补一句</div>';
+        ? '<div style="font-size:13px;color:#333;line-height:1.6;margin:8px 0 2px;">“' + cap + '”</div>'
+        : '';
+    var evLine = ev
+        ? '<div style="font-size:12px;color:#6a4bd8;line-height:1.5;margin-top:4px;">📖 ' + ev + '</div>'
+        : '';
+    var moodBadge = mood
+        ? '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:12px;background:#fff3e6;color:#e8823a;font-size:12px;">' + mood + '</span>'
+        : '';
     return '<div style="width:300px;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.18);font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',sans-serif;">' +
         '<div style="position:relative;">' +
             '<img src="' + src + '" style="width:100%;height:180px;object-fit:cover;display:block;background:#f2f3f5;">' +
@@ -511,14 +520,16 @@ function photoCardHtml(g, i) {
             '<div style="display:flex;align-items:center;gap:8px;">' +
                 '<img src="' + p.avatar + '" style="width:26px;height:26px;border-radius:50%;object-fit:cover;">' +
                 '<span style="font-size:13px;font-weight:600;color:#222;">' + p.name + '</span>' +
+                '<span style="margin-left:auto;">' + moodBadge + '</span>' +
             '</div>' +
-            capLine +
-            '<div style="display:flex;align-items:flex-start;gap:5px;font-size:12px;color:#8a8f99;line-height:1.5;">' +
+            capLine + evLine + timeLine +
+            '<div style="display:flex;align-items:flex-start;gap:5px;font-size:12px;color:#8a8f99;line-height:1.5;margin-top:4px;">' +
                 '<span style="flex:none;">📍</span><span>' + (p.address || '') + '</span>' +
             '</div>' +
             '<div style="height:1px;background:#f0f1f3;margin:11px 0;"></div>' +
-            '<div style="display:flex;gap:8px;">' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
                 '<button onclick="cardEditCaption()" style="flex:1;padding:7px 0;border:none;border-radius:18px;background:#eef4fb;color:#1e88e5;font-size:12px;cursor:pointer;">✎ 签名</button>' +
+                '<button onclick="cardEditRecord()" style="flex:1;padding:7px 0;border:none;border-radius:18px;background:#f1ecff;color:#6a4bd8;font-size:12px;cursor:pointer;">✎ 编辑回忆</button>' +
                 '<a href="' + p.url + '" download style="flex:1;text-align:center;padding:7px 0;border-radius:18px;background:#f2f5f8;color:#1e88e5;font-size:12px;text-decoration:none;">下载</a>' +
                 '<button onclick="cardDel()" style="padding:7px 12px;border:none;border-radius:18px;background:#fff0f0;color:#e53935;font-size:12px;cursor:pointer;">删除</button>' +
             '</div>' +
@@ -558,6 +569,89 @@ function cardEditCaption() {
                         infoWindow.setContent(photoCardHtml(activeGroup, activeIdx));
                         renderChip(activeGroup);
                         layer.msg('签名已保存');
+                    } else {
+                        if (btn) { btn.disabled = false; btn.innerText = '保存'; }
+                        layer.msg((res.data && res.data.msg) || '保存失败');
+                    }
+                }).catch(function () {
+                    if (btn) { btn.disabled = false; btn.innerText = '保存'; }
+                    layer.msg('网络错误，未保存');
+                });
+            }
+        });
+    });
+}
+
+// 心情选项：DB 只存 ASCII key，emoji 在前端映射（兼容 utf8mb3 连接）
+var MOODS = [
+    { k: 'sun', e: '☀️' }, { k: 'happy', e: '😊' }, { k: 'calm', e: '😌' }, { k: 'joy', e: '🥳' },
+    { k: 'love', e: '❤️' }, { k: 'wow', e: '😮' }, { k: 'sad', e: '😢' }, { k: 'rain', e: '🌧️' }
+];
+function moodEmoji(k) { var f = MOODS.find(function (m) { return m.k === k; }); return f ? f.e : ''; }
+function toLocalInput(s) { return s ? String(s).replace(' ', 'T').slice(0, 16) : ''; }
+
+function cardEditRecord() {
+    if (!activeGroup) return;
+    var g = activeGroup;
+    var base = g.photos[activeIdx];
+    var ev = g.photos.map(function (x) { return x.event; }).filter(Boolean)[0] || '';
+    var mood = g.photos.map(function (x) { return x.mood; }).filter(Boolean)[0] || '';
+    var start = base.start_time || '', end = base.end_time || '';
+    var moodHtml = MOODS.map(function (m) {
+        var on = m.k === mood;
+        return '<span data-mood="' + m.k + '" style="display:inline-flex;width:38px;height:38px;align-items:center;justify-content:center;font-size:20px;border-radius:50%;cursor:pointer;margin:3px;' + (on ? 'background:#6a4bd8;box-shadow:0 0 0 2px #fff,0 0 0 4px #6a4bd8;' : 'background:#f2f3f5;') + '">' + m.e + '</span>';
+    }).join('');
+    layui.use('layer', function () {
+        var layer = layui.layer;
+        layer.open({
+            title: '编辑这段回忆',
+            area: ['440px', '460px'],
+            content:
+                '<div style="padding:16px 18px;font-family:-apple-system,\'PingFang SC\',sans-serif;">' +
+                '<div style="font-size:12px;color:#888;margin-bottom:4px;">事件 / 文案（整段共用）</div>' +
+                '<textarea id="evIn" class="layui-textarea" style="height:76px;">' + ev + '</textarea>' +
+                '<div style="display:flex;gap:12px;margin-top:12px;">' +
+                  '<div style="flex:1;"><div style="font-size:12px;color:#888;margin-bottom:4px;">开始时间</div>' +
+                  '<input id="stIn" type="datetime-local" class="layui-input" value="' + toLocalInput(start) + '"></div>' +
+                  '<div style="flex:1;"><div style="font-size:12px;color:#888;margin-bottom:4px;">结束时间</div>' +
+                  '<input id="etIn" type="datetime-local" class="layui-input" value="' + toLocalInput(end) + '"></div>' +
+                '</div>' +
+                '<div style="font-size:12px;color:#888;margin:14px 0 2px;">此刻的心情</div>' +
+                '<div id="moodRow" style="text-align:center;">' + moodHtml + '</div>' +
+                '</div>',
+            btn: ['保存'],
+            success: function (idx) {
+                var chosen = mood;
+                layer.index = idx;
+                document.getElementById('moodRow').addEventListener('click', function (e) {
+                    var s = e.target.closest('[data-mood]');
+                    if (!s) return;
+                    chosen = s.dataset.mood;
+                    document.querySelectorAll('#moodRow [data-mood]').forEach(function (el) {
+                        var on = el.dataset.mood === chosen;
+                        el.style.background = on ? '#6a4bd8' : '#f2f3f5';
+                        el.style.boxShadow = on ? '0 0 0 2px #fff,0 0 0 4px #6a4bd8' : 'none';
+                    });
+                });
+                layer._chosenMood = function () { return chosen; };
+            },
+            yes: function (idx) {
+                var event = document.getElementById('evIn').value.trim();
+                var st = (document.getElementById('stIn').value || '').replace('T', ' ');
+                var et = (document.getElementById('etIn').value || '').replace('T', ' ');
+                var btn = document.querySelector('#layui-layer' + idx + ' .layui-layer-btn a');
+                if (btn) { btn.disabled = true; btn.innerText = '保存中…'; }
+                axios.post('/index💕editrecord', {
+                    fids: g.photos.map(function (x) { return x.id; }),
+                    event: event, start_time: st, end_time: et, mood: layer._chosenMood() || ''
+                }).then(function (res) {
+                    if (res.data && res.data.code == 200) {
+                        g.photos.forEach(function (x) { x.event = event; x.start_time = st; x.end_time = et; x.mood = layer._chosenMood() || ''; });
+                        layer.close(idx);
+                        scheduleTrail();                       // 重算时间 → 重绘连接线与序号
+                        infoWindow.setContent(photoCardHtml(g, activeIdx));
+                        renderChip(g);
+                        layer.msg('已保存');
                     } else {
                         if (btn) { btn.disabled = false; btn.innerText = '保存'; }
                         layer.msg((res.data && res.data.msg) || '保存失败');
@@ -712,6 +806,12 @@ function addPhoto() {
                     '<span style="color:#999;">至</span>' +
                     '<input type="datetime-local" id="endTime" style="flex:1;padding:6px 8px;border:1px solid #dde3e9;border-radius:8px;font-size:12px;min-width:150px;">' +
                 '</div>' +
+                '<div style="margin:10px 0;font-size:12px;color:#555;">此刻心情' +
+                  '<span id="moodRow" style="display:inline-flex;gap:4px;margin-left:8px;align-items:center;">' +
+                  MOODS.map(function (m) {
+                      return '<span data-mood="' + m.k + '" style="display:inline-flex;width:32px;height:32px;align-items:center;justify-content:center;font-size:18px;border-radius:50%;cursor:pointer;background:#f2f3f5;">' + m.e + '</span>';
+                  }).join('') +
+                  '</span></div>' +
                 '<div style="margin:14px 0 8px;display:inline-flex;border:1px solid #dde3e9;border-radius:18px;overflow:hidden;font-size:12px;">' +
                     '<button type="button" data-mode="shared" class="mode-btn" style="padding:6px 14px;border:none;background:#1e88e5;color:#fff;cursor:pointer;">共用一条文案</button>' +
                     '<button type="button" data-mode="per" class="mode-btn" style="padding:6px 14px;border:none;background:#fff;color:#555;cursor:pointer;">每张单独写</button>' +
@@ -734,6 +834,20 @@ function bindUploadUI() {
     capMode = 'shared';
     // 本次打开弹窗的所有图片属于同一提交批次
     var batchId = 'b' + Date.now().toString(36) + Math.random().toString(16).slice(2, 6);
+    var chosenMood = '';
+    var moodRow = document.getElementById('moodRow');
+    if (moodRow) {
+        moodRow.addEventListener('click', function (e) {
+            var s = e.target.closest('[data-mood]');
+            if (!s) return;
+            chosenMood = s.dataset.mood;
+            moodRow.querySelectorAll('[data-mood]').forEach(function (el) {
+                var on = el.dataset.mood === chosenMood;
+                el.style.background = on ? '#6a4bd8' : '#f2f3f5';
+                el.style.boxShadow = on ? '0 0 0 2px #fff,0 0 0 4px #6a4bd8' : 'none';
+            });
+        });
+    }
 
     // 起止时间默认当前时刻
     function localDT(d) {
@@ -815,11 +929,13 @@ function bindUploadUI() {
             fd.append('start-time', (document.getElementById('startTime') || {}).value || '');
             fd.append('end-time', (document.getElementById('endTime') || {}).value || '');
             fd.append('batch', batchId);
+            fd.append('mood', chosenMood);
             axios.post('upload💕index', fd).then(function (res) {
                 done++;
                 if (res.data && res.data.code == 200 && res.data.data) {
                     var photo = res.data.data;
                     photo.batch = photo.batch || batchId;
+                    photo.mood = photo.mood || chosenMood;
                     addPhotoToMap(photo);
                     lastPoint = [parseFloat(photo.lng), parseFloat(photo.lat)];
                 } else {

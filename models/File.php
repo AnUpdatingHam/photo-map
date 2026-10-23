@@ -4,9 +4,10 @@ class File extends Base{
 
     public function getFiles($id){
       $love_id = self::$pdo->query("SELECT u_love_uid FROM `m_users` WHERE u_id = '$id' ")->fetch()['u_love_uid'];
-      $sql = "SELECT f.f_lat lat,f.f_lng lng,f.f_slurl thumbnail,f.f_wsysurl nondes,f.f_url url,f.f_video_url video,f.f_caption caption,f.f_event event,f.f_batch batch,f.f_date_time data_time,f.f_start_time start_time,f.f_end_time end_time,f.f_address address,f.f_id id,u.u_name name,u.u_avatar avatar FROM `m_files` f LEFT JOIN m_users u ON f.f_uid = u.u_id WHERE f_uid =$id AND f_isd='0'";
+      $cols = "f.f_lat lat,f.f_lng lng,f.f_slurl thumbnail,f.f_wsysurl nondes,f.f_url url,f.f_video_url video,f.f_caption caption,f.f_event event,f.f_batch batch,f.f_mood mood,f.f_date_time data_time,f.f_start_time start_time,f.f_end_time end_time,f.f_address address,f.f_id id,u.u_name name,u.u_avatar avatar";
+      $sql = "SELECT $cols FROM `m_files` f LEFT JOIN m_users u ON f.f_uid = u.u_id WHERE f_uid =$id AND f_isd='0'";
       if($love_id){
-        $sql = "SELECT f.f_lat lat,f.f_lng lng,f.f_slurl thumbnail,f.f_wsysurl nondes,f.f_url url,f.f_video_url video,f.f_caption caption,f.f_event event,f.f_batch batch,f.f_date_time data_time,f.f_start_time start_time,f.f_end_time end_time,f.f_address address,f.f_id id,u.u_name name,u.u_avatar avatar FROM `m_files` f LEFT JOIN m_users u ON f.f_uid = u.u_id WHERE f_uid IN($id,$love_id) AND f_isd='0'";
+        $sql = "SELECT $cols FROM `m_files` f LEFT JOIN m_users u ON f.f_uid = u.u_id WHERE f_uid IN($id,$love_id) AND f_isd='0'";
       }
       $stmt = self::$pdo->query($sql);
       $data = $stmt->fetchAll(\PDO::FETCH_ASSOC );
@@ -36,6 +37,18 @@ class File extends Base{
       $sql = "UPDATE m_files SET f_caption= ? WHERE f_uid= ? and f_id= ?";
       $stmt = self::$pdo->prepare($sql);
       $sta = $stmt->execute([$content, $uid, (int)$fid]);
+      return $sta;
+   }
+
+   // 编辑一次提交（整组 fids）的共用事件文案 / 起止时间 / 心情
+   public function editRecord($fids, $event, $start, $end, $mood){
+      $uid = (int)($_SESSION['id'] ?? 0);
+      if (!$uid || !$fids) return false;
+      $ids = array_map('intval', (array)$fids);
+      $in = implode(',', $ids);
+      $sql = "UPDATE m_files SET f_event=?, f_start_time=?, f_end_time=?, f_mood=? WHERE f_uid=? AND f_id IN($in)";
+      $stmt = self::$pdo->prepare($sql);
+      $sta = $stmt->execute([$event, $start, $end, $mood, $uid]);
       return $sta;
    }
 }

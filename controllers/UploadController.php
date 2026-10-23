@@ -125,6 +125,7 @@ class UploadController extends Controller
         $caption = addslashes(trim($_POST['caption'] ?? ''));        // 共用文案 → f_event
         $perCaption = addslashes(trim($_POST['per-caption'] ?? '')); // 单张文案 → f_caption
         $batch = addslashes(trim($_POST['batch'] ?? ''));             // 一次多选提交的批次号
+        $mood = addslashes(trim($_POST['mood'] ?? ''));                // 心情 emoji
         // 起止时间：datetime-local 形如 2026-10-23T18:30，统一存为 YYYY-MM-DD HH:mm
         $startTime = addslashes(str_replace('T', ' ', trim($_POST['start-time'] ?? '')));
         $endTime = addslashes(str_replace('T', ' ', trim($_POST['end-time'] ?? '')));
@@ -166,7 +167,7 @@ class UploadController extends Controller
                         }
                         $id = $uid;
                         $upload = new Upload;
-                        $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_start_time,f_end_time,f_towncode,f_address,f_event,f_caption,f_batch) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$startTime','$endTime','$towncode', '$address','$caption','$perCaption','$batch')";
+                        $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_start_time,f_end_time,f_towncode,f_address,f_event,f_caption,f_batch,f_mood) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$startTime','$endTime','$towncode', '$address','$caption','$perCaption','$batch','$mood')";
                         $newId = $upload->insert($sql);
                         if($newId){
                             echo json_encode([
@@ -185,6 +186,7 @@ class UploadController extends Controller
                                     'start_time'=>$startTime,
                                     'end_time'=>$endTime,
                                     'batch'=>$batch,
+                                    'mood'=>$mood,
                                     'address'=>$address,
                                     'name'=>$uinfo['u_name'] ?? '',
                                     'avatar'=>$uinfo['u_avatar'] ?? ''
@@ -257,7 +259,7 @@ class UploadController extends Controller
                        @unlink($absRotated);
                         $id = $uid;
                         $upload = new Upload;
-                        $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_start_time,f_end_time,f_towncode,f_address,f_event,f_caption,f_batch) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$startTime','$endTime','$towncode', '$address','$caption','$perCaption','$batch')";
+                        $sql = "INSERT INTO m_files(f_uid,f_lng,f_lat,f_url,f_slurl,f_wsysurl,f_date_time,f_start_time,f_end_time,f_towncode,f_address,f_event,f_caption,f_batch,f_mood) VALUES($id,'$lngs','$lats','$dbsave_dir','$slurl','$dbwsysurl','$time','$startTime','$endTime','$towncode', '$address','$caption','$perCaption','$batch','$mood')";
                         $isUp = $upload->insert($sql);
                         if($isUp){
                             echo json_encode([
