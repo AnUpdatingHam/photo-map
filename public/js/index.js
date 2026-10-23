@@ -345,7 +345,7 @@ function openTimelinePanel() {
     var minisHtml = records.map(function (r, i) {
         var first = r.photos[0];
         var hue = Math.round(i / Math.max(1, records.length - 1) * 300);
-        return '<div class="tl-mini" data-i="' + i + '" style="position:absolute;left:50%;top:50%;width:150px;height:190px;margin:-95px 0 0 -75px;border-radius:18px;overflow:hidden;cursor:pointer;background:rgba(255,255,255,.12);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.28);box-shadow:0 14px 40px rgba(0,0,0,.4);transition:transform .65s cubic-bezier(.22,1,.36,1),opacity .5s ease,box-shadow .3s;">' +
+        return '<div class="tl-mini" data-i="' + i + '" style="position:absolute;left:50%;top:50%;width:150px;height:190px;margin:-95px 0 0 -75px;border-radius:18px;overflow:hidden;cursor:pointer;background:rgba(255,255,255,.12);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.28);box-shadow:0 14px 40px rgba(0,0,0,.4);transition:transform 1s cubic-bezier(.25,.8,.3,1),opacity .8s ease,box-shadow .3s;">' +
             '<div style="height:118px;position:relative;"><img src="' + (first.nondes || first.thumbnail || first.url) + '" style="width:100%;height:100%;object-fit:cover;display:block;">' +
             '<span style="position:absolute;left:8px;top:8px;padding:3px 9px;border-radius:12px;background:hsla(' + hue + ',90%,60%,.92);color:#fff;font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fmtTime(first) + '</span></div>' +
             '<div style="padding:9px 11px;color:#fff;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + r.name + ' ' + moodEmoji(r.mood) + '</div>' +
@@ -359,6 +359,7 @@ function openTimelinePanel() {
             '<div style="font-size:28px;font-weight:700;letter-spacing:3px;text-shadow:0 2px 20px rgba(255,255,255,.45);">✦ 时光长河 ✦</div>' +
             '<div style="font-size:13px;opacity:.82;margin-top:6px;">首尾相连 · 按提交回到每一段闪光 · 共 ' + records.length + ' 次回忆</div>' +
         '</div>' +
+        '<button id="tlPlay" style="position:absolute;right:72px;top:22px;width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.15);color:#fff;font-size:16px;cursor:pointer;z-index:30;">⏸</button>' +
         '<button id="tlClose" style="position:absolute;right:22px;top:22px;width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.15);color:#fff;font-size:18px;cursor:pointer;z-index:30;">×</button>' +
         '<div id="tlMinis" style="position:absolute;inset:0;z-index:8;">' + minisHtml + '</div>' +
         // 中心大卡：左图（大图+缩略条）右信息
@@ -372,6 +373,19 @@ function openTimelinePanel() {
     var minis = Array.prototype.slice.call(el.querySelectorAll('.tl-mini'));
     var dots = el.querySelector('#tlDots');
     var focus = el.querySelector('#tlFocus');
+
+    // 自动播放：当前卡内多图先逐张播完，再切下一个大卡；用户点击/滚轮即停
+    var playTimer = null, PLAY_MS = 3500;
+    var playBtn = el.querySelector('#tlPlay');
+    function updatePlayBtn() { if (playBtn) playBtn.textContent = playTimer ? '⏸' : '▶'; }
+    function stopAutoplay() { if (playTimer) { clearInterval(playTimer); playTimer = null; } updatePlayBtn(); }
+    function startAutoplay() { stopAutoplay(); playTimer = setInterval(tick, PLAY_MS); updatePlayBtn(); }
+    function tick() {
+        var n = records[idx].photos.length;
+        if (n > 1 && sub < n - 1) focusSub(sub + 1);
+        else go(idx + 1);
+    }
+    if (playBtn) playBtn.onclick = function () { if (playTimer) stopAutoplay(); else startAutoplay(); };
 
     function wrap(d) { d = ((d % count) + count) % count; if (d > count / 2) d -= count; return d; }
 
@@ -388,7 +402,7 @@ function openTimelinePanel() {
           // 左：图片区
           '<div style="width:56%;padding:18px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;">' +
             '<div id="tlStageImg" style="position:relative;flex:1;border-radius:18px;overflow:hidden;background:#000;">' +
-              '<img id="tlBig" src="' + big + '" style="width:100%;height:100%;object-fit:cover;display:block;opacity:1;transition:opacity .28s ease;">' +
+              '<img id="tlBig" src="' + big + '" style="width:100%;height:100%;object-fit:cover;display:block;opacity:1;transition:opacity .6s ease;">' +
               '<button class="tl-bignav" data-d="-1" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:none;background:rgba(0,0,0,.35);color:#fff;font-size:20px;cursor:pointer;opacity:0;transition:.25s;">‹</button>' +
               '<button class="tl-bignav" data-d="1" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:none;background:rgba(0,0,0,.35);color:#fff;font-size:20px;cursor:pointer;opacity:0;transition:.25s;">›</button>' +
               (r.photos.length > 1 ? '<span id="tlCnt" style="position:absolute;right:12px;bottom:12px;padding:3px 11px;border-radius:12px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;">' + (s + 1) + ' / ' + r.photos.length + '</span>' : '') +
@@ -434,17 +448,17 @@ function openTimelinePanel() {
                 t.style.boxShadow = on ? '0 0 0 2px #7c5cff' : 'none';
                 t.style.opacity = on ? 1 : .6;
             });
-        }, 200);
+        }, 350);
     }
 
     function bindFocus() {
         focus.querySelectorAll('.tl-bignav').forEach(function (b) {
             b.onmouseenter = function () { b.style.opacity = 1; };
             b.onmouseleave = function () { b.style.opacity = 0; };
-            b.onclick = function () { focusSub(sub + parseInt(b.dataset.d, 10)); };
+            b.onclick = function () { stopAutoplay(); focusSub(sub + parseInt(b.dataset.d, 10)); };
         });
         focus.querySelectorAll('.tl-thumb').forEach(function (t) {
-            t.onclick = function () { focusSub(parseInt(t.dataset.sub, 10)); };
+            t.onclick = function () { stopAutoplay(); focusSub(parseInt(t.dataset.sub, 10)); };
         });
         // 滚轮（大图区/缩略条）直接切换上一张/下一张，带防抖
         var onWheel = function (e) {
@@ -452,6 +466,7 @@ function openTimelinePanel() {
             if (wheelLock) return;
             wheelLock = true;
             setTimeout(function () { wheelLock = false; }, 380);
+            stopAutoplay();
             focusSub(sub + (e.deltaY > 0 ? 1 : -1));
         };
         var stageImg = focus.querySelector('#tlStageImg');
@@ -498,19 +513,20 @@ function openTimelinePanel() {
     for (var d = 0; d < count; d++) {
         var s = document.createElement('span');
         s.style.cssText = 'height:8px;width:8px;border-radius:50%;background:rgba(255,255,255,.35);transition:.3s;display:inline-block;cursor:pointer;';
-        s.onclick = function (k) { return function () { go(k); }; }(d);
+        s.onclick = function (k) { return function () { stopAutoplay(); go(k); }; }(d);
         dots.appendChild(s);
     }
-    el.querySelector('#tlPrev').onclick = function () { go(idx - 1); };
-    el.querySelector('#tlNext').onclick = function () { go(idx + 1); };
-    el.querySelector('#tlClose').onclick = function () { el.remove(); };
+    el.querySelector('#tlPrev').onclick = function () { stopAutoplay(); go(idx - 1); };
+    el.querySelector('#tlNext').onclick = function () { stopAutoplay(); go(idx + 1); };
+    el.querySelector('#tlClose').onclick = function () { stopAutoplay(); el.remove(); };
 
     // 两侧卡片可点击直接跳转
     minis.forEach(function (c, k) {
-        c.onclick = function () { go(k); };
+        c.onclick = function () { stopAutoplay(); go(k); };
     });
 
     go(0);
+    startAutoplay();
 }
 
 // 时光轴入口按钮
@@ -528,8 +544,8 @@ styleEl.textContent =
     '.gm-spin{width:18px;height:18px;border:2px solid #d5dde5;border-top-color:#1e88e5;border-radius:50%;animation:gmrot .8s linear infinite;}' +
     '@keyframes gmrot{to{transform:rotate(360deg);}}' +
     '.gm-cap{position:absolute;display:-webkit-box;width:max-content;max-width:128px;padding:2px 8px;background:rgba(0,0,0,.68);color:#fff;border-radius:6px;font-size:11px;line-height:1.4;text-align:center;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;word-break:normal;box-shadow:0 2px 8px rgba(0,0,0,.3);}' +
-'@keyframes tlFade{from{opacity:.35;transform:translate(-50%,-50%) scale(.96);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}' +
-'.tl-fade{animation:tlFade .5s cubic-bezier(.22,.9,.28,1);}';
+'@keyframes tlFade{from{opacity:.25;transform:translate(-50%,-50%) scale(.94);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}' +
+'.tl-fade{animation:tlFade .9s cubic-bezier(.25,.8,.3,1);}';
 document.head.appendChild(styleEl);
 
 /* ===== 精致小弹框（非全屏）：翻页 / 改签名 / 下载 / 删除 ===== */
