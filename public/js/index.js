@@ -527,7 +527,7 @@ var styleEl = document.createElement('style');
 styleEl.textContent =
     '.gm-spin{width:18px;height:18px;border:2px solid #d5dde5;border-top-color:#1e88e5;border-radius:50%;animation:gmrot .8s linear infinite;}' +
     '@keyframes gmrot{to{transform:rotate(360deg);}}' +
-    '.gm-cap{position:absolute;display:-webkit-box;max-width:128px;padding:2px 7px;background:rgba(0,0,0,.68);color:#fff;border-radius:6px;font-size:11px;line-height:1.4;text-align:center;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all;box-shadow:0 2px 8px rgba(0,0,0,.3);}' +
+    '.gm-cap{position:absolute;display:-webkit-box;width:max-content;max-width:128px;padding:2px 8px;background:rgba(0,0,0,.68);color:#fff;border-radius:6px;font-size:11px;line-height:1.4;text-align:center;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;word-break:normal;box-shadow:0 2px 8px rgba(0,0,0,.3);}' +
 '@keyframes tlFade{from{opacity:.35;transform:translate(-50%,-50%) scale(.96);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}' +
 '.tl-fade{animation:tlFade .5s cubic-bezier(.22,.9,.28,1);}';
 document.head.appendChild(styleEl);
