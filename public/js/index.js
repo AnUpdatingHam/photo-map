@@ -35,6 +35,14 @@ function photoCaption(p) {
     return (p.caption && String(p.caption).trim()) ? p.caption : (p.event || '');
 }
 
+// 心情选项：DB 只存 ASCII key，emoji 在前端映射（兼容 utf8mb3 连接）；提前定义供初始渲染使用
+var MOODS = [
+    { k: 'sun', e: '☀️' }, { k: 'happy', e: '😊' }, { k: 'calm', e: '😌' }, { k: 'joy', e: '🥳' },
+    { k: 'love', e: '❤️' }, { k: 'wow', e: '😮' }, { k: 'sad', e: '😢' }, { k: 'rain', e: '🌧️' }
+];
+function moodEmoji(k) { if (!k || !MOODS) return ''; var f = MOODS.find(function (m) { return m.k === k; }); return f ? f.e : ''; }
+function toLocalInput(s) { return s ? String(s).replace(' ', 'T').slice(0, 16) : ''; }
+
 function ensureGroup(lng, lat) {
     var key = lng.toFixed(4) + ',' + lat.toFixed(4);
     if (!groups[key]) {
@@ -60,8 +68,10 @@ function renderChip(g) {
     var p = g.photos[g.idx];
     var src = p.thumbnail || p.url;
     var cap = photoCaption(p);
-    // 签名绝对定位在图片下方居中，两行省略号，不把图片挤偏
-    var capHtml = cap ? '<div class="gm-cap" style="left:50%;top:58px;transform:translateX(-50%);width:128px;">' + cap + '</div>' : '';
+    var mood = moodEmoji(p.mood);
+    var moodBadge = mood ? '<span style="position:absolute;right:2px;top:2px;width:18px;height:18px;line-height:18px;text-align:center;border-radius:50%;background:rgba(255,255,255,.92);font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.35);z-index:3;">' + mood + '</span>' : '';
+    // 签名随内容收缩（最大128），绝对定位图片下方居中，两行省略号，不把图片挤偏
+    var capHtml = cap ? '<div class="gm-cap" style="left:50%;top:58px;transform:translateX(-50%);">' + cap + '</div>' : '';
     // 图片/角标/签名包在相对容器里，针尖固定在最底部并落在经纬度点（anchor bottom-center）
     g.marker.setContent(
         '<div style="display:flex;flex-direction:column;align-items:center;">' +
@@ -69,6 +79,7 @@ function renderChip(g) {
         '<div style="position:relative;width:52px;height:52px;border-radius:10px;overflow:hidden;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);background:#eef1f4;">' +
         '<div class="gm-spin" style="position:absolute;left:50%;top:50%;margin:-9px 0 0 -9px;"></div>' +
         '<img src="' + src + '" style="width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .35s;" onload="this.style.opacity=1;var s=this.parentNode.querySelector(\'.gm-spin\');if(s)s.remove()" onerror="var s=this.parentNode.querySelector(\'.gm-spin\');if(s)s.remove()">' +
+        moodBadge +
         '</div>' + capHtml +
         '</div>' +
         '<div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:9px solid #fff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3));margin-top:-1px;"></div>' +
@@ -234,9 +245,9 @@ function buildTrajectory() {
             }));
         }
         trailLayers.push(new AMap.Marker({
-            position: [+g.lng, +g.lat], anchor: 'center', zIndex: 60,
-            offset: new AMap.Pixel(0, -32),
-            content: '<div style="width:24px;height:24px;border-radius:50%;background:hsl(' + hue + ',85%,60%);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px hsla(' + hue + ',90%,65%,.9),0 2px 6px rgba(0,0,0,.35);">' + (i + 1) + '</div>',
+            position: [+g.lng, +g.lat], anchor: 'center', zIndex: 90,
+            offset: new AMap.Pixel(0, 0),
+            content: '<div style="width:22px;height:22px;border-radius:50%;background:hsl(' + hue + ',85%,60%);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;box-shadow:0 0 12px hsla(' + hue + ',90%,65%,.9),0 2px 6px rgba(0,0,0,.35);">' + (i + 1) + '</div>',
             map: trailOn ? map : null
         }));
     });
@@ -334,7 +345,7 @@ function openTimelinePanel() {
     var minisHtml = records.map(function (r, i) {
         var first = r.photos[0];
         var hue = Math.round(i / Math.max(1, records.length - 1) * 300);
-        return '<div class="tl-mini" data-i="' + i + '" style="position:absolute;left:50%;top:50%;width:150px;height:190px;margin:-95px 0 0 -75px;border-radius:18px;overflow:hidden;cursor:pointer;background:rgba(255,255,255,.12);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.28);box-shadow:0 14px 40px rgba(0,0,0,.4);transition:transform .55s cubic-bezier(.22,.9,.28,1),opacity .4s,box-shadow .3s;">' +
+        return '<div class="tl-mini" data-i="' + i + '" style="position:absolute;left:50%;top:50%;width:150px;height:190px;margin:-95px 0 0 -75px;border-radius:18px;overflow:hidden;cursor:pointer;background:rgba(255,255,255,.12);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.28);box-shadow:0 14px 40px rgba(0,0,0,.4);transition:transform .65s cubic-bezier(.22,1,.36,1),opacity .5s ease,box-shadow .3s;">' +
             '<div style="height:118px;position:relative;"><img src="' + (first.nondes || first.thumbnail || first.url) + '" style="width:100%;height:100%;object-fit:cover;display:block;">' +
             '<span style="position:absolute;left:8px;top:8px;padding:3px 9px;border-radius:12px;background:hsla(' + hue + ',90%,60%,.92);color:#fff;font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fmtTime(first) + '</span></div>' +
             '<div style="padding:9px 11px;color:#fff;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + r.name + ' ' + moodEmoji(r.mood) + '</div>' +
@@ -370,14 +381,14 @@ function openTimelinePanel() {
         var thumbs = r.photos.map(function (ph, k) {
             var t = ph.nondes || ph.thumbnail || ph.url;
             var on = k === s;
-            return '<div class="tl-thumb" data-sub="' + k + '" style="flex:none;width:62px;height:62px;border-radius:12px;overflow:hidden;cursor:pointer;border:2px solid ' + (on ? '#fff' : 'transparent') + ';box-shadow:' + (on ? '0 0 0 2px #7c5cff' : 'none') + ';opacity:' + (on ? 1 : .6) + ';"><img src="' + t + '" style="width:100%;height:100%;object-fit:cover;display:block;"></div>';
+            return '<div class="tl-thumb" data-sub="' + k + '" style="flex:none;width:62px;height:62px;border-radius:12px;overflow:hidden;cursor:pointer;border:2px solid ' + (on ? '#fff' : 'transparent') + ';box-shadow:' + (on ? '0 0 0 2px #7c5cff' : 'none') + ';opacity:' + (on ? 1 : .6) + ';transition:opacity .25s,box-shadow .25s;"><img src="' + t + '" style="width:100%;height:100%;object-fit:cover;display:block;"></div>';
         }).join('');
         var cap = photoCaption(p);
         return '<div style="display:flex;width:100%;height:100%;">' +
           // 左：图片区
           '<div style="width:56%;padding:18px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;">' +
-            '<div style="position:relative;flex:1;border-radius:18px;overflow:hidden;background:#000;">' +
-              '<img id="tlBig" src="' + big + '" style="width:100%;height:100%;object-fit:cover;display:block;">' +
+            '<div id="tlStageImg" style="position:relative;flex:1;border-radius:18px;overflow:hidden;background:#000;">' +
+              '<img id="tlBig" src="' + big + '" style="width:100%;height:100%;object-fit:cover;display:block;opacity:1;transition:opacity .28s ease;">' +
               '<button class="tl-bignav" data-d="-1" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:none;background:rgba(0,0,0,.35);color:#fff;font-size:20px;cursor:pointer;opacity:0;transition:.25s;">‹</button>' +
               '<button class="tl-bignav" data-d="1" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:none;background:rgba(0,0,0,.35);color:#fff;font-size:20px;cursor:pointer;opacity:0;transition:.25s;">›</button>' +
               (r.photos.length > 1 ? '<span id="tlCnt" style="position:absolute;right:12px;bottom:12px;padding:3px 11px;border-radius:12px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;">' + (s + 1) + ' / ' + r.photos.length + '</span>' : '') +
@@ -386,18 +397,47 @@ function openTimelinePanel() {
           '</div>' +
           // 右：信息区
           '<div style="flex:1;padding:26px 22px;color:#fff;display:flex;flex-direction:column;gap:12px;overflow:hidden;">' +
-            '<div style="display:flex;align-items:center;gap:10px;"><span style="padding:5px 13px;border-radius:15px;background:rgba(124,92,255,.55);font-size:12px;">🕒 ' + fmtTime(p) + '</span>' + (p.end_time ? '<span style="font-size:12px;opacity:.8;">→ ' + p.end_time + '</span>' : '') + '</div>' +
+            '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><span id="tlTime" style="padding:5px 13px;border-radius:15px;background:rgba(124,92,255,.55);font-size:12px;">🕒 ' + fmtTime(p) + '</span>' + (p.end_time ? '<span style="font-size:12px;opacity:.8;">→ ' + p.end_time + '</span>' : '') + '</div>' +
             '<div style="display:flex;align-items:center;gap:10px;"><img src="' + r.avatar + '" style="width:34px;height:34px;border-radius:50%;object-fit:cover;"><span style="font-size:15px;font-weight:600;">' + r.name + '</span>' + (r.mood ? '<span style="font-size:26px;margin-left:2px;" title="心情">' + moodEmoji(r.mood) + '</span>' : '') + '</div>' +
-            '<div style="font-size:16px;line-height:1.7;max-height:150px;overflow:auto;white-space:pre-wrap;word-break:break-word;">' + (cap || '<span style="opacity:.6;">一段尚未写下的回忆</span>') + '</div>' +
+            '<div id="tlCap" style="font-size:16px;line-height:1.7;max-height:150px;overflow:auto;white-space:pre-wrap;word-break:break-word;">' + (cap || '<span style="opacity:.6;">一段尚未写下的回忆</span>') + '</div>' +
             '<div style="margin-top:auto;font-size:12.5px;color:rgba(255,255,255,.82);line-height:1.6;">📍 ' + (r.address || '') + '</div>' +
           '</div>' +
         '</div>';
     }
 
+    var wheelLock = false;
     function renderFocus() {
         var r = records[idx];
         focus.innerHTML = focusHtml(r, sub);
-        // 大图悬停显小箭头
+        focus.classList.remove('tl-fade'); void focus.offsetWidth; focus.classList.add('tl-fade');
+        bindFocus();
+    }
+
+    // 局部更新当前记录内的第 s 张（淡入淡出，不重建整卡）
+    function updateSub(r, s) {
+        var p = r.photos[s];
+        var big = focus.querySelector('#tlBig');
+        var capEl = focus.querySelector('#tlCap');
+        var timeEl = focus.querySelector('#tlTime');
+        var cnt = focus.querySelector('#tlCnt');
+        big.style.opacity = 0;
+        setTimeout(function () {
+            big.src = p.nondes || p.thumbnail || p.url;
+            big.onload = function () { big.style.opacity = 1; };
+            big.style.opacity = 1;
+            if (cnt) cnt.textContent = (s + 1) + ' / ' + r.photos.length;
+            if (capEl) { var c = photoCaption(p); capEl.innerHTML = c || '<span style="opacity:.6;">一段尚未写下的回忆</span>'; }
+            if (timeEl) timeEl.innerHTML = '🕒 ' + fmtTime(p);
+            focus.querySelectorAll('.tl-thumb').forEach(function (t) {
+                var on = parseInt(t.dataset.sub, 10) === s;
+                t.style.borderColor = on ? '#fff' : 'transparent';
+                t.style.boxShadow = on ? '0 0 0 2px #7c5cff' : 'none';
+                t.style.opacity = on ? 1 : .6;
+            });
+        }, 200);
+    }
+
+    function bindFocus() {
         focus.querySelectorAll('.tl-bignav').forEach(function (b) {
             b.onmouseenter = function () { b.style.opacity = 1; };
             b.onmouseleave = function () { b.style.opacity = 0; };
@@ -406,16 +446,24 @@ function openTimelinePanel() {
         focus.querySelectorAll('.tl-thumb').forEach(function (t) {
             t.onclick = function () { focusSub(parseInt(t.dataset.sub, 10)); };
         });
-        // 缩略条滚轮左右切换
+        // 滚轮（大图区/缩略条）直接切换上一张/下一张，带防抖
+        var onWheel = function (e) {
+            e.preventDefault();
+            if (wheelLock) return;
+            wheelLock = true;
+            setTimeout(function () { wheelLock = false; }, 380);
+            focusSub(sub + (e.deltaY > 0 ? 1 : -1));
+        };
+        var stageImg = focus.querySelector('#tlStageImg');
+        if (stageImg) stageImg.addEventListener('wheel', onWheel, { passive: false });
         var strip = focus.querySelector('#tlThumbs');
-        if (strip) strip.addEventListener('wheel', function (e) {
-            e.preventDefault(); strip.scrollLeft += (e.deltaY || e.deltaX) * 2;
-        }, { passive: false });
+        if (strip) strip.addEventListener('wheel', onWheel, { passive: false });
     }
 
     function focusSub(s) {
-        sub = ((s % records[idx].photos.length) + records[idx].photos.length) % records[idx].photos.length;
-        renderFocus();
+        var n = records[idx].photos.length;
+        sub = ((s % n) + n) % n;
+        updateSub(records[idx], sub);
     }
 
     function layout() {
@@ -423,11 +471,12 @@ function openTimelinePanel() {
             var d = wrap(k - idx);
             var ad = Math.abs(d);
             var show = ad === 1 || ad === 2;
-            var x = d * 250;
-            var scale = ad === 1 ? .86 : .66;
-            var rise = ad === 1 ? 40 : 110;
+            // 相邻卡放到中心大卡外沿，保证上一张/下一张露出可点；第二张更远更淡
+            var x = ad === 1 ? d * 520 : d * 830;
+            var scale = ad === 1 ? .82 : .55;
+            var rise = ad === 1 ? 26 : 96;
             c.style.transform = 'translate(' + x + 'px,' + rise + 'px) scale(' + scale + ')';
-            c.style.opacity = show ? (ad === 1 ? .95 : .6) : 0;
+            c.style.opacity = show ? (ad === 1 ? .98 : .45) : 0;
             c.style.zIndex = 10 - ad;
             c.style.pointerEvents = show ? 'auto' : 'none';
         });
@@ -478,7 +527,9 @@ var styleEl = document.createElement('style');
 styleEl.textContent =
     '.gm-spin{width:18px;height:18px;border:2px solid #d5dde5;border-top-color:#1e88e5;border-radius:50%;animation:gmrot .8s linear infinite;}' +
     '@keyframes gmrot{to{transform:rotate(360deg);}}' +
-    '.gm-cap{position:absolute;padding:2px 7px;background:rgba(0,0,0,.68);color:#fff;border-radius:6px;font-size:11px;line-height:1.4;text-align:center;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all;box-shadow:0 2px 8px rgba(0,0,0,.3);}';
+    '.gm-cap{position:absolute;display:-webkit-box;max-width:128px;padding:2px 7px;background:rgba(0,0,0,.68);color:#fff;border-radius:6px;font-size:11px;line-height:1.4;text-align:center;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all;box-shadow:0 2px 8px rgba(0,0,0,.3);}' +
+'@keyframes tlFade{from{opacity:.35;transform:translate(-50%,-50%) scale(.96);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}' +
+'.tl-fade{animation:tlFade .5s cubic-bezier(.22,.9,.28,1);}';
 document.head.appendChild(styleEl);
 
 /* ===== 精致小弹框（非全屏）：翻页 / 改签名 / 下载 / 删除 ===== */
@@ -581,14 +632,6 @@ function cardEditCaption() {
         });
     });
 }
-
-// 心情选项：DB 只存 ASCII key，emoji 在前端映射（兼容 utf8mb3 连接）
-var MOODS = [
-    { k: 'sun', e: '☀️' }, { k: 'happy', e: '😊' }, { k: 'calm', e: '😌' }, { k: 'joy', e: '🥳' },
-    { k: 'love', e: '❤️' }, { k: 'wow', e: '😮' }, { k: 'sad', e: '😢' }, { k: 'rain', e: '🌧️' }
-];
-function moodEmoji(k) { var f = MOODS.find(function (m) { return m.k === k; }); return f ? f.e : ''; }
-function toLocalInput(s) { return s ? String(s).replace(' ', 'T').slice(0, 16) : ''; }
 
 function cardEditRecord() {
     if (!activeGroup) return;
